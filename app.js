@@ -1,7 +1,7 @@
 (function ensureSettings(){
   if (typeof window.SETTINGS === 'undefined') {
     window.SETTINGS = {
-      WEBHOOK_URL: "https://script.google.com/macros/s/AKfycbyg9eeOxCnSvfFvwY7Jyp9HihRyq-ky6cALWzvC8Y104orJdAUofh1PPEdd5kez9m6D3Q/exec",
+      WEBHOOK_URL: "https://script.google.com/macros/s/AKfycbyI-9BNZT-FCeE8vq2eIHsnqvfdfepUkLWoP1Yw0qUbLW-2_6XmyTRPiaqE2PlU41-wJA/exec",
       SECRET: "BFF"
     };
     console.warn('[BFF] settings.js not found; using embedded fallback SETTINGS.');
