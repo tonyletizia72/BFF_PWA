@@ -1,7 +1,14 @@
-const CACHE_NAME = 'bff-gym-cache-v6'; // ← bump this
+// service-worker.js — cache bump to refresh files
+const CACHE_NAME = 'bff-gym-cache-v8'; // bump this when you change files
 const ASSETS = [
-  './', './index.html', './app.js', './manifest.json',
-  './assets/icon-192.png', './assets/icon-512.png', './assets/bff-logo.png'
+  './',
+  './index.html',
+  './app.js',
+  './settings.js',
+  './manifest.json',
+  './assets/icon-192.png',
+  './assets/icon-512.png',
+  './assets/bff-logo.png'
 ];
 
 // Install: pre-cache
