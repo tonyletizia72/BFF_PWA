@@ -1,6 +1,7 @@
 const SETTINGS = {
-  WEBHOOK_URL: "https://script.google.com/macros/s/AKfycbymx2rM7NKcwvp52q4-NzweWGLoP4ZZRBME2JfSPahVZGaYEyw4J-NMtcHJxgptwBKQ7Q/exec",
+  WEBHOOK_URL: "https://script.google.com/macros/s/AKfycbxYzNzl7kLyeVDzy7I7FzlxB6-ZJrkZZW8RBfP6No5H/dev",
   SECRET: "BFF"
 };
+
 
 
