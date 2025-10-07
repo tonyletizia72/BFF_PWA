@@ -1,9 +1,3 @@
-// app.js — Boxing for Fitness (admin PWA)
-// - Works with static .session elements (day columns) for selection
-// - Members add/delete/+1 and email contact
-// - Payments + Attendance
-// - Queue -> Google Sheets (no-cors) via Apps Script
-
 (function ensureSettings(){
   if (typeof window.SETTINGS === 'undefined') {
     window.SETTINGS = {
@@ -14,18 +8,19 @@
   }
 })();
 
+// Pricing
 const PRICING = {
   single: { label: 'Single $20', amount: 20, credits: 1 },
   '10':   { label: '10-Pack $180', amount: 180, credits: 10 },
   '20':   { label: '20-Pack $360', amount: 360, credits: 20 },
 };
 
-// --- storage helpers ---
+// Local storage helpers
 const LS = { queue:'bff_queue', members:'bff_members', payments:'bff_payments', attendance:'bff_att' };
 const read  = (k,d=[]) => JSON.parse(localStorage.getItem(k) || JSON.stringify(d));
 const write = (k,v)   => localStorage.setItem(k, JSON.stringify(v));
 
-// --- queue to Apps Script ---
+// Queue to Apps Script (no-cors)
 async function queueEvent(ev){
   const q = read(LS.queue); q.push(ev); write(LS.queue,q);
   await flushQueue();
@@ -47,13 +42,13 @@ async function flushQueue(){
 }
 window.addEventListener('online', flushQueue);
 
-// --- ui shortcuts ---
+// UI helpers
 const $  = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
 const toast = $('#toast');
 const showToast = (m)=>{ if(!toast) return; toast.textContent=m; toast.style.display='block'; setTimeout(()=>toast.style.display='none',1600); };
 
-// --- tabs ---
+// Tabs
 $$('nav button[data-tab]').forEach(btn=>{
   btn.onclick = ()=>{
     $$('nav button').forEach(b=>b.classList.remove('active'));
@@ -66,7 +61,7 @@ $$('nav button[data-tab]').forEach(btn=>{
   };
 });
 
-// --- sessions: attach to existing .session boxes ---
+// Sessions (static HTML): wire up hover/active + selected field
 let selectedSession = '';
 function wireSessions(){
   const boxes = $$('#sessionGrid .session');
@@ -86,7 +81,7 @@ function wireSessions(){
   if (boxes[0]) boxes[0].click();
 }
 
-// --- members ---
+// Members
 function getMembers(){ return read(LS.members); }
 function setMembers(v){ write(LS.members,v); }
 
@@ -159,7 +154,7 @@ function renderMembers(){
   if (dl) dl.innerHTML = members.map(m=>`<option value="${m.name} (${m.phone||''})"></option>`).join('');
 }
 
-// --- payments ---
+// Payments
 function getPayments(){ return read(LS.payments); }
 function setPayments(v){ write(LS.payments,v); }
 
@@ -196,7 +191,7 @@ function refreshPayments(){
   });
 }
 
-// --- attendance / check-in ---
+// Attendance / check-in
 function getAttendance(){ return read(LS.attendance); }
 function setAttendance(v){ write(LS.attendance,v); }
 
@@ -226,7 +221,7 @@ $('#confirmCheckin')?.addEventListener('click', async ()=>{
   showToast('Checked in'); refreshReports();
 });
 
-// --- reports / exports ---
+// Reports / exports
 function refreshReports(){
   const atts = getAttendance();
   const today = new Date().toDateString();
@@ -238,6 +233,6 @@ function download(n,t){const b=new Blob([t],{type:'text/csv'});const a=document.
 $('#exportAttendance')?.addEventListener('click',()=>{ const a=getAttendance(); const rows=[['date','session','memberId','memberName']]; a.forEach(x=>rows.push([x.date,x.session,x.memberId,x.memberName])); download('attendance.csv',toCSV(rows)); });
 $('#exportPayments')?.addEventListener('click',()=>{ const a=getPayments(); const rows=[['date','type','memberId','memberName','amount','credits']]; a.forEach(x=>rows.push([x.date,x.type,x.memberId,x.memberName,x.amount,x.credits])); download('payments.csv',toCSV(rows)); });
 
-// --- init ---
+// Init
 function init(){ wireSessions(); renderMembers(); refreshPayments(); refreshReports(); flushQueue(); }
 init();
