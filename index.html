@@ -9,6 +9,7 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png">
   <link rel="manifest" href="manifest.json">
   <title>Boxing for Fitness</title>
+
   <style>
     :root {
       --pad: clamp(10px, 2vmin, 18px);
@@ -21,6 +22,7 @@
       --accent: #ef4444;
       --line: #2a2b31;
     }
+
     * { box-sizing: border-box; }
     html, body {height:100%; margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;}
     body {background: var(--bg); color: var(--text); -webkit-tap-highlight-color: transparent;}
@@ -49,14 +51,21 @@
     .chip {display:inline-block; padding: 6px 10px; border-radius:999px; border:1px solid var(--line); background:#14151a;}
     .tag {font-size:.85rem; color: var(--muted);}
     .section-title {margin: 8px 0 14px 0;}
-    .session-grid {display:grid; gap:10px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));}
-    .session {border:1px solid var(--line); border-radius:12px; padding:14px; background:#111217; cursor:pointer; transition: background 0.2s, transform 0.2s;}
-    .session:hover {background:#181920; transform:scale(1.02);}
-    .session.active {outline: 2px solid var(--accent);}
+    .session-grid {display:grid; gap:10px;}
+    .day-columns {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(6, 1fr); /* 6 columns for Mon–Sat */
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .day-columns {grid-template-columns: repeat(2, 1fr);}
+    }
+    .session {border:1px solid var(--line); border-radius:12px; padding:14px; background:#111217; cursor:pointer; transition: all 0.2s ease;}
+    .session:hover {outline: 2px solid var(--accent); background:#1a1b21;}
     .session .time {font-weight:700;}
     .toast {position: fixed; left: 50%; transform: translateX(-50%); bottom: 18px; background: #111827; color: white; padding: 10px 14px; border-radius: 999px; display:none;}
     .hint {font-size:.9rem; color: var(--muted);}
-    @media (max-width: 900px) { .cols-3 {grid-template-columns: 1fr;} .cols-2{grid-template-columns: 1fr;} }
   </style>
 </head>
 <body>
@@ -80,7 +89,9 @@
 
     <section id="tab-checkin" class="card">
       <h3 class="section-title">Sessions</h3>
-      <div class="session-grid" id="sessionGrid"></div>
+      <div class="session-grid">
+        <div class="day-columns" id="sessionGrid"></div>
+      </div>
       <div class="row" style="margin-top:14px;">
         <div style="flex:2;">
           <label>Member</label>
@@ -188,7 +199,6 @@
   </div>
 
   <div id="toast" class="toast">Saved</div>
-  <div id="updateToast" class="toast" style="display:none;">⚡ App updated — tap to refresh</div>
 
   <script src="app.js"></script>
   <script>
@@ -196,28 +206,6 @@
     const isIOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
     const installBtn = document.getElementById('installBtn');
     if (!isStandalone && isIOS) installBtn.textContent = 'Add to Home Screen (Share → Add)';
-
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', async () => {
-        try {
-          const reg = await navigator.serviceWorker.register('./service-worker.js');
-          reg.addEventListener('updatefound', () => {
-            const newWorker = reg.installing;
-            if (!newWorker) return;
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                const toast = document.getElementById('updateToast');
-                toast.style.display = 'block';
-                toast.onclick = () => {
-                  (reg.waiting || newWorker).postMessage({ type: 'SKIP_WAITING' });
-                };
-              }
-            });
-          });
-          navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload());
-        } catch (err) { console.error('Service Worker registration failed:', err); }
-      });
-    }
   </script>
 </body>
 </html>
