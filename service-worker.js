@@ -1,4 +1,4 @@
-// service-worker.js — Boxing for Fitness
+// Boxing for Fitness — Service Worker with offline + instant update
 const CACHE_NAME = 'bff-gym-cache-v2';
 const ASSETS = [
   './',
@@ -11,55 +11,42 @@ const ASSETS = [
   './assets/icon-512.png'
 ];
 
-// ✅ Install: Cache all app shell files
-self.addEventListener('install', event => {
-  console.log('[Service Worker] Installing...');
+// Cache on install
+self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      console.log('[Service Worker] Caching core files');
-      return cache.addAll(ASSETS);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
   );
-  self.skipWaiting(); // activate immediately
+  self.skipWaiting();
 });
 
-// ✅ Activate: Remove old caches when new version detected
-self.addEventListener('activate', event => {
-  console.log('[Service Worker] Activating...');
+// Activate new version and clear old caches
+self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.map(key => {
-        if (key !== CACHE_NAME) {
-          console.log('[Service Worker] Deleting old cache:', key);
-          return caches.delete(key);
-        }
-      }))
+    caches.keys().then((keys) =>
+      Promise.all(keys.map((key) => (key !== CACHE_NAME ? caches.delete(key) : null)))
     )
   );
   self.clients.claim();
 });
 
-// ✅ Fetch: Serve cached files, then fallback to network
-self.addEventListener('fetch', event => {
+// Serve cached assets first, fallback to network
+self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   event.respondWith(
-    caches.match(event.request).then(cached => {
+    caches.match(event.request).then((cached) => {
       const fetchPromise = fetch(event.request)
-        .then(networkResponse => {
-          // Update cache if newer version found
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, networkResponse.clone());
-          });
-          return networkResponse;
+        .then((res) => {
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, res.clone()));
+          return res;
         })
-        .catch(() => cached); // fallback to cache if offline
+        .catch(() => cached);
       return cached || fetchPromise;
     })
   );
 });
 
-// ✅ Listen for skipWaiting() trigger from app
-self.addEventListener('message', event => {
+// Allow skipping waiting when new SW is ready
+self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
