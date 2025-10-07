@@ -2,7 +2,6 @@
  * Boxing for Fitness App — Main Logic
  * Version: perth-1.1 (Perth-local server; URL updated)
  ***************************************************/
-
 (function ensureSettings(){
   if (typeof window.SETTINGS === 'undefined') {
     window.SETTINGS = {
