@@ -195,11 +195,52 @@
 
   <script src="settings.js"></script>
   <script src="app.js"></script>
-  <script>
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-    const isIOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
-    const installBtn = document.getElementById('installBtn');
-    if (!isStandalone && isIOS) installBtn.textContent = 'Add to Home Screen (Share → Add)';
-  </script>
+<script>
+  // iOS Install hint
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  const isIOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+  const installBtn = document.getElementById('installBtn');
+  if (!isStandalone && isIOS) installBtn.textContent = 'Add to Home Screen (Share → Add)';
+
+  // Service Worker registration + update toast
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', async () => {
+      try {
+        const reg = await navigator.serviceWorker.register('./service-worker.js');
+
+        // Listen for new worker updates
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          if (!newWorker) return;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              const toast = document.getElementById('updateToast');
+              if (toast) {
+                toast.style.display = 'block';
+                toast.onclick = () => {
+                  (reg.waiting || newWorker).postMessage({ type: 'SKIP_WAITING' });
+                };
+              }
+            }
+          });
+        });
+
+        // When the new SW activates, reload for fresh content
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          window.location.reload();
+        });
+
+      } catch (err) {
+        console.error('Service Worker registration failed:', err);
+      }
+    });
+  }
+</script>
+
+<!-- Update notification toast -->
+<div id="updateToast" class="toast" style="display:none;">
+  ⚡ App updated — tap to refresh
+</div>
+
 </body>
 </html>
