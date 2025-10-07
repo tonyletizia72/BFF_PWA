@@ -1,9 +1,5 @@
+// settings.js  ✅ correct
 const SETTINGS = {
-  WEBHOOK_URL: "https://script.google.com/macros/s/AKfycbyg9eeOxCnSvfFvwY7Jyp9HihRyq-ky6cALWzvC8Y104orJdAUofh1PPEdd5kez9m6D3Q/exec",
+  WEBHOOK_URL: "https://script.google.com/macros/s/AKfycbsy9ee0xCnsvffFwn7Jyp9HlhRyq-kylc6ALNvcC8YlB0orJ4dA0hfIlPEd4Skex3pe0J0/exec",
   SECRET: "BFF"
 };
-
-
-
-
-
