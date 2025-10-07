@@ -49,18 +49,13 @@
     .chip {display:inline-block; padding: 6px 10px; border-radius:999px; border:1px solid var(--line); background:#14151a;}
     .tag {font-size:.85rem; color: var(--muted);}
     .section-title {margin: 8px 0 14px 0;}
+    .session-grid {display:grid; gap:10px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));}
+    .session {border:1px solid var(--line); border-radius:12px; padding:14px; background:#111217; cursor:pointer; transition: background 0.2s, transform 0.2s;}
+    .session:hover {background:#181920; transform:scale(1.02);}
+    .session.active {outline: 2px solid var(--accent);}
+    .session .time {font-weight:700;}
     .toast {position: fixed; left: 50%; transform: translateX(-50%); bottom: 18px; background: #111827; color: white; padding: 10px 14px; border-radius: 999px; display:none;}
     .hint {font-size:.9rem; color: var(--muted);}
-
-    /* Timetable: day columns with clear hover/active states */
-    .day-columns { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
-    .day-col { background: #111217; border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
-    .day-col h4 { margin: 0 0 8px 0; font-size: 1rem; color: #e5e7eb; }
-    .slot { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; background: #0f1014; cursor: pointer; user-select: none; transition: transform .06s ease, outline-color .12s ease, background .12s ease, border-color .12s ease; }
-    .slot .time { font-weight: 700; }
-    .slot:hover { outline: 2px solid #2a2b31; transform: translateY(-1px); }
-    .slot.active { outline: 2px solid var(--accent); border-color: var(--accent); background: linear-gradient(180deg, #16171d 0%, #111217 100%); box-shadow: 0 6px 18px rgba(239, 68, 68, 0.2); }
-
     @media (max-width: 900px) { .cols-3 {grid-template-columns: 1fr;} .cols-2{grid-template-columns: 1fr;} }
   </style>
 </head>
@@ -83,10 +78,9 @@
       </nav>
     </header>
 
-    <!-- CHECK-IN -->
     <section id="tab-checkin" class="card">
       <h3 class="section-title">Sessions</h3>
-      <div class="day-columns" id="sessionGrid"></div>
+      <div class="session-grid" id="sessionGrid"></div>
       <div class="row" style="margin-top:14px;">
         <div style="flex:2;">
           <label>Member</label>
@@ -104,7 +98,6 @@
       <div class="hint">Credit automatically deducted (1 per class). If balance is 0, you’ll be prompted to add a pack or single.</div>
     </section>
 
-    <!-- MEMBERS -->
     <section id="tab-members" class="card" style="display:none;">
       <div class="grid cols-3">
         <div>
@@ -119,8 +112,8 @@
               <input id="mPhone" placeholder="e.g., 0400 000 000">
             </div>
             <div>
-              <label>Email (for receipts)</label>
-              <input id="mEmail" type="email" placeholder="e.g., alex@example.com">
+              <label>Email</label>
+              <input id="mEmail" placeholder="e.g., alex@email.com">
             </div>
             <div>
               <label>Notes</label>
@@ -134,14 +127,22 @@
         <div class="cols-span-2" style="grid-column: span 2;">
           <h3 class="section-title">Member List</h3>
           <table id="memberTable">
-            <thead><tr><th>Name</th><th>Phone</th><th>Credits</th><th></th></tr></thead>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Email</th>
+                <th>Credits</th>
+                <th></th>
+                <th></th>
+              </tr>
+            </thead>
             <tbody></tbody>
           </table>
         </div>
       </div>
     </section>
 
-    <!-- PAYMENTS -->
     <section id="tab-payments" class="card" style="display:none;">
       <div class="row">
         <div style="flex:2;">
@@ -167,7 +168,6 @@
       </table>
     </section>
 
-    <!-- REPORTS -->
     <section id="tab-reports" class="card" style="display:none;">
       <div class="row">
         <button id="exportAttendance" class="btn secondary">Export Attendance CSV</button>
@@ -176,10 +176,6 @@
       <div style="margin-top:16px;">
         <h3 class="section-title">Today at a glance</h3>
         <div id="todaySummary" class="muted">No data yet.</div>
-      </div>
-      <div style="margin-top:16px;">
-        <h3 class="section-title">This Week</h3>
-        <div id="weeklySummary" class="muted">No data yet.</div>
       </div>
       <div style="margin-top:16px;">
         <h3 class="section-title">Latest Check-ins</h3>
@@ -192,55 +188,36 @@
   </div>
 
   <div id="toast" class="toast">Saved</div>
+  <div id="updateToast" class="toast" style="display:none;">⚡ App updated — tap to refresh</div>
 
-  <script src="settings.js"></script>
   <script src="app.js"></script>
-<script>
-  // iOS Install hint
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-  const isIOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
-  const installBtn = document.getElementById('installBtn');
-  if (!isStandalone && isIOS) installBtn.textContent = 'Add to Home Screen (Share → Add)';
+  <script>
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    const isIOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+    const installBtn = document.getElementById('installBtn');
+    if (!isStandalone && isIOS) installBtn.textContent = 'Add to Home Screen (Share → Add)';
 
-  // Service Worker registration + update toast
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', async () => {
-      try {
-        const reg = await navigator.serviceWorker.register('./service-worker.js');
-
-        // Listen for new worker updates
-        reg.addEventListener('updatefound', () => {
-          const newWorker = reg.installing;
-          if (!newWorker) return;
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              const toast = document.getElementById('updateToast');
-              if (toast) {
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', async () => {
+        try {
+          const reg = await navigator.serviceWorker.register('./service-worker.js');
+          reg.addEventListener('updatefound', () => {
+            const newWorker = reg.installing;
+            if (!newWorker) return;
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                const toast = document.getElementById('updateToast');
                 toast.style.display = 'block';
                 toast.onclick = () => {
                   (reg.waiting || newWorker).postMessage({ type: 'SKIP_WAITING' });
                 };
               }
-            }
+            });
           });
-        });
-
-        // When the new SW activates, reload for fresh content
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
-          window.location.reload();
-        });
-
-      } catch (err) {
-        console.error('Service Worker registration failed:', err);
-      }
-    });
-  }
-</script>
-
-<!-- Update notification toast -->
-<div id="updateToast" class="toast" style="display:none;">
-  ⚡ App updated — tap to refresh
-</div>
-
+          navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload());
+        } catch (err) { console.error('Service Worker registration failed:', err); }
+      });
+    }
+  </script>
 </body>
 </html>
