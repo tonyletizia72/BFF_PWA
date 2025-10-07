@@ -1,12 +1,29 @@
-// app.js — Boxing for Fitness PWA (Sheets sync + no-cors + payments table + timetable columns)
+// app.js — Boxing for Fitness (PWA admin app)
+// - Sheets sync with no-cors (Apps Script)
+// - Members + email contact
+// - Payments (flat payload) + Recent Transactions
+// - Attendance + simple reports
+// - Session cards with hover + active highlight
 
-// ---------- Config ----------
+// ----- SETTINGS FALLBACK (if settings.js isn't present) -----
+(function ensureSettings(){
+  if (typeof window.SETTINGS === 'undefined') {
+    window.SETTINGS = {
+      WEBHOOK_URL: "https://script.google.com/macros/s/AKfycbyg9eeOxCnSvfFvwY7Jyp9HihRyq-ky6cALWzvC8Y104orJdAUofh1PPEdd5kez9m6D3Q/exec",
+      SECRET: "BFF"
+    };
+    console.warn('[BFF] settings.js not found; using embedded fallback SETTINGS.');
+  }
+})();
+
+// ----- PRICING / TIMETABLE -----
 const PRICING = {
   single: { label: 'Single $20', amount: 20, credits: 1 },
   '10':   { label: '10-Pack $180', amount: 180, credits: 10 },
   '20':   { label: '20-Pack $360', amount: 360, credits: 20 },
 };
 
+// Use your attached timetable; feel free to tweak times/days.
 const TIMETABLE = [
   { day: 'Monday',    times: ['6:00 AM','9:30 AM','5:00 PM','6:30 PM'] },
   { day: 'Tuesday',   times: ['6:00 AM','9:30 AM','5:00 PM','6:30 PM'] },
@@ -16,7 +33,7 @@ const TIMETABLE = [
   { day: 'Saturday',  times: ['8:00 AM','9:30 AM'] },
 ];
 
-// ---------- Local storage ----------
+// ----- LOCAL STORAGE HELPERS -----
 const LS = {
   queue: 'bff_queue',
   members: 'bff_members',
@@ -26,7 +43,7 @@ const LS = {
 const read  = (k, d=[]) => JSON.parse(localStorage.getItem(k) || JSON.stringify(d));
 const write = (k, v)   => localStorage.setItem(k, JSON.stringify(v));
 
-// ---------- Queue → Google Sheets (no-cors to avoid preflight) ----------
+// ----- QUEUE → GOOGLE SHEETS (no CORS preflight) -----
 async function queueEvent(ev){
   const q = read(LS.queue); q.push(ev); write(LS.queue,q);
   await flushQueue();
@@ -36,10 +53,10 @@ async function flushQueue(){
   while(q.length){
     const ev = q[0];
     try{
-      await fetch(SETTINGS.WEBHOOK_URL,{
-        method:'POST',
-        mode:'no-cors',
-        headers:{'Content-Type':'text/plain;charset=utf-8'},
+      await fetch(SETTINGS.WEBHOOK_URL, {
+        method: 'POST',
+        mode: 'no-cors', // avoids preflight; response will be opaque
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ secret: SETTINGS.SECRET, ...ev })
       });
       q.shift(); write(LS.queue,q);
@@ -51,13 +68,13 @@ async function flushQueue(){
 }
 window.addEventListener('online', flushQueue);
 
-// ---------- Helpers ----------
+// ----- DOM SHORTCUTS -----
 const $  = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
 const toast = $('#toast');
-function showToast(msg){ toast.textContent=msg; toast.style.display='block'; setTimeout(()=>toast.style.display='none',1600); }
+function showToast(msg){ if(!toast) return; toast.textContent=msg; toast.style.display='block'; setTimeout(()=>toast.style.display='none',1600); }
 
-// ---------- Tabs ----------
+// ----- TABS -----
 $$('nav button[data-tab]').forEach(btn=>{
   btn.addEventListener('click',()=>{
     $$('nav button').forEach(b=>b.classList.remove('active'));
@@ -70,145 +87,178 @@ $$('nav button[data-tab]').forEach(btn=>{
   });
 });
 
-// ---------- Sessions (vertical by day + hover/active) ----------
-const sessionGrid = document.getElementById('sessionGrid');
+// ----- SESSIONS (cards with hover + active) -----
+const sessionGrid = $('#sessionGrid');
 let selectedSession = '';
-let selectedSlotEl = null;
+let selectedSessionEl = null;
 
 function renderSessions() {
+  if (!sessionGrid) return;
   sessionGrid.innerHTML = '';
 
+  // Render as simple session cards (fits your index.css styles)
   TIMETABLE.forEach(col => {
-    const wrap = document.createElement('div');
-    wrap.className = 'day-col';
-    wrap.innerHTML = `<h4>${col.day}</h4>`;
-
     col.times.forEach(t => {
-      const slot = document.createElement('div');
-      slot.className = 'slot';
-      slot.setAttribute('role', 'button');
-      slot.setAttribute('tabindex', '0');
-      slot.innerHTML = `<div class="time">${t}</div>`;
-
+      const card = document.createElement('div');
+      card.className = 'session';
+      card.setAttribute('role','button');
+      card.setAttribute('tabindex','0');
+      card.innerHTML = `
+        <div class="time">${t}</div>
+        <div>${col.day}</div>
+      `;
       const activate = () => {
-        if (selectedSlotEl) selectedSlotEl.classList.remove('active');
-        slot.classList.add('active');
-        selectedSlotEl = slot;
+        if (selectedSessionEl) selectedSessionEl.classList.remove('active');
+        card.classList.add('active');
+        selectedSessionEl = card;
         selectedSession = `${col.day} ${t}`;
-        document.getElementById('selectedSession').value = selectedSession;
+        const sel = $('#selectedSession'); if (sel) sel.value = selectedSession;
       };
-
-      slot.onclick = activate;
-      slot.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); } };
-
-      wrap.appendChild(slot);
+      card.onclick = activate;
+      card.onkeydown = (e)=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); activate(); } };
+      sessionGrid.appendChild(card);
     });
-
-    sessionGrid.appendChild(wrap);
   });
 
-  // Optional: preselect the first session
-  const first = sessionGrid.querySelector('.slot');
+  // Preselect first
+  const first = sessionGrid.querySelector('.session');
   if (first) first.click();
 }
 
-// ---------- Members ----------
+// ----- MEMBERS -----
 function getMembers(){ return read(LS.members); }
 function setMembers(v){ write(LS.members,v); }
 
-$('#addMember').addEventListener('click', async ()=>{
-  const name  = $('#mName').value.trim(); if(!name) return alert('Name required');
-  const phone = $('#mPhone').value.trim();
-  const email = ($('#mEmail')?.value || '').trim();
-  const notes = $('#mNotes').value.trim();
+$('#addMember')?.addEventListener('click', async ()=>{
+  const name  = $('#mName')?.value.trim(); if(!name) return alert('Name required');
+  const phone = $('#mPhone')?.value.trim() || '';
+  const email = $('#mEmail')?.value.trim() || '';
+  const notes = $('#mNotes')?.value.trim() || '';
 
-  const members=getMembers();
-  const id=Date.now();
-  const member={ id, name, phone, email, notes, credits:1, createdAt:new Date().toISOString() };
+  const members = getMembers();
+  const id = Date.now();
+  const member = { id, name, phone, email, notes, credits: 1, createdAt: new Date().toISOString() };
   members.push(member); setMembers(members);
 
   await queueEvent({ type:'member_add', payload:{ member } });
 
-  $('#mName').value=$('#mPhone').value=$('#mNotes').value='';
+  // clear form
+  if($('#mName'))  $('#mName').value='';
+  if($('#mPhone')) $('#mPhone').value='';
   if($('#mEmail')) $('#mEmail').value='';
+  if($('#mNotes')) $('#mNotes').value='';
   renderMembers(); showToast('Member added (+1 free)');
 });
 
 function renderMembers(){
-  const tbody=$('#memberTable tbody'); if(!tbody) return;
-  tbody.innerHTML='';
-  const members=getMembers().sort((a,b)=>a.name.localeCompare(b.name));
-  members.forEach(m=>{
-    const tr=document.createElement('tr');
-    tr.innerHTML=`
+  const tbody = $('#memberTable tbody'); if(!tbody) return;
+  tbody.innerHTML = '';
+  const members = getMembers().sort((a,b)=>a.name.localeCompare(b.name));
+
+  members.forEach((m, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
       <td>${m.name}</td>
-      <td>${m.phone||''}</td>
-      <td><span class="chip">${m.credits||0}</span></td>
+      <td>${m.phone || ''}</td>
+      <td>${m.email || ''}</td>
+      <td><span class="chip">${m.credits || 0}</span></td>
       <td style="display:flex;gap:8px;">
         <button class="btn sm secondary" data-action="plus1" data-id="${m.id}">+1</button>
         <button class="btn sm ghost" data-action="delete" data-id="${m.id}">🗑️</button>
-      </td>`;
+      </td>
+      <td>
+        ${m.email ? `<button class="btn sm ghost contactMember" data-email="${m.email}" data-name="${m.name}">✉️ Contact</button>` : ''}
+      </td>
+    `;
     tbody.appendChild(tr);
   });
 
-  // +1
-  tbody.querySelectorAll('button[data-action="plus1"]').forEach(b=>b.onclick=()=>{
-    const id=Number(b.dataset.id); const ms=getMembers(); const m=ms.find(x=>x.id===id); if(!m) return;
-    m.credits=(m.credits||0)+1; setMembers(ms); renderMembers(); showToast('Credit added');
+  // +1 credit quick button
+  tbody.querySelectorAll('button[data-action="plus1"]').forEach(b=>{
+    b.onclick = ()=>{
+      const id = Number(b.dataset.id);
+      const ms = getMembers();
+      const m = ms.find(x=>x.id===id); if(!m) return;
+      m.credits = (m.credits||0) + 1;
+      setMembers(ms); renderMembers(); showToast('Credit added');
+    };
   });
 
-  // delete
-  tbody.querySelectorAll('button[data-action="delete"]').forEach(b=>b.onclick=async()=>{
-    const id=Number(b.dataset.id); const ms=getMembers(); const m=ms.find(x=>x.id===id); if(!m) return;
-    if(!confirm(`Delete ${m.name}?`)) return;
-    setMembers(ms.filter(x=>x.id!==id)); renderMembers(); showToast('Member deleted');
-    await queueEvent({ type:'member_delete', payload:{ memberId:id, memberName:m.name }});
+  // delete member
+  tbody.querySelectorAll('button[data-action="delete"]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id = Number(b.dataset.id);
+      const ms = getMembers();
+      const m  = ms.find(x=>x.id===id); if(!m) return;
+      if(!confirm(`Delete ${m.name}? Payments/attendance remain in the sheet.`)) return;
+      setMembers(ms.filter(x=>x.id!==id));
+      renderMembers(); showToast('Member deleted');
+      await queueEvent({ type:'member_delete', payload:{ memberId:id, memberName:m.name }});
+    };
   });
 
-  // datalist
-  const dl=$('#memberList'); if(dl){ dl.innerHTML=''; members.forEach(m=>{ const o=document.createElement('option'); o.value=`${m.name} (${m.phone||''})`; dl.appendChild(o); }); }
+  // contact (mailto)
+  tbody.querySelectorAll('.contactMember').forEach(btn=>{
+    btn.onclick = (e)=>{
+      const email = btn.dataset.email;
+      const name  = btn.dataset.name || '';
+      const subject = encodeURIComponent('Boxing for Fitness – Message');
+      const body    = encodeURIComponent(`Hi ${name},\n\n`);
+      window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
+    };
+  });
+
+  // datalist for search fields
+  const dl = $('#memberList');
+  if (dl) {
+    dl.innerHTML = members.map(m => `<option value="${m.name} (${m.phone||''})"></option>`).join('');
+  }
 }
 
-// ---------- Payments ----------
+// ----- PAYMENTS -----
 function getPayments(){ return read(LS.payments); }
 function setPayments(v){ write(LS.payments,v); }
 
-$('#addCredit').addEventListener('click', async ()=>{
-  const input=$('#payMember').value.trim();
-  const pack=$('#payPack').value;
-  const members=getMembers();
-  const m=members.find(x=>input.includes(x.name));
-  if(!m) return alert('Select a valid member');
+$('#addCredit')?.addEventListener('click', async ()=>{
+  const input = $('#payMember')?.value.trim();
+  const pack  = $('#payPack')?.value;
+  if (!input || !pack) return;
 
-  const p=PRICING[pack];
-  m.credits=(m.credits||0)+p.credits; setMembers(members); renderMembers();
+  const members = getMembers();
+  const m = members.find(x => input.includes(x.name));
+  if (!m) return alert('Select a valid member');
 
-  // Local record (complete/flat payload)
+  const p = PRICING[pack];
+  m.credits = (m.credits||0) + p.credits;
+  setMembers(members); renderMembers();
+
+  // local record (flat payload)
   const rec = {
     date: new Date().toISOString(),
-    type: pack,
+    type: pack, // 'single' | '10' | '20'
     memberId: m.id,
     memberName: m.name,
     amount: p.amount,
     credits: p.credits,
     memberEmail: m.email || ''
   };
-  const txs=getPayments(); txs.unshift(rec); setPayments(txs);
+  const txs = getPayments(); txs.unshift(rec); setPayments(txs);
 
-  // Send to Sheets
+  // send to Sheets
   await queueEvent({ type:'payment', payload: rec });
 
-  $('#payMember').value=''; showToast('Payment applied');
+  if ($('#payMember')) $('#payMember').value='';
+  showToast('Payment applied');
   refreshPayments();
   refreshReports();
 });
 
 function refreshPayments(){
-  const tb=$('#txTable tbody'); if(!tb) return;
-  tb.innerHTML='';
-  const txs=getPayments();
+  const tb = $('#txTable tbody'); if(!tb) return;
+  tb.innerHTML = '';
+  const txs = getPayments();
   txs.forEach(t=>{
-    const tr=document.createElement('tr');
+    const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${new Date(t.date).toLocaleString()}</td>
       <td>${PRICING[t.type]?.label || t.type}</td>
@@ -219,19 +269,20 @@ function refreshPayments(){
   });
 }
 
-// ---------- Attendance / Check-in ----------
+// ----- ATTENDANCE / CHECK-IN -----
 function getAttendance(){ return read(LS.attendance); }
 function setAttendance(v){ write(LS.attendance,v); }
 
-$('#confirmCheckin').addEventListener('click', async ()=>{
-  if(!selectedSession) return alert('Select a session');
-  const input=$('#checkinMember').value.trim();
-  const members=getMembers(); const m=members.find(x=>input.includes(x.name));
-  if(!m) return alert('Select a valid member');
+$('#confirmCheckin')?.addEventListener('click', async ()=>{
+  if (!selectedSession) return alert('Select a session');
+  const input = $('#checkinMember')?.value.trim();
+  const members = getMembers();
+  const m = members.find(x => input && input.includes(x.name));
+  if (!m) return alert('Select a valid member');
 
-  // if no credit, offer auto single purchase
-  if((m.credits||0) <= 0){
-    if(confirm(`${m.name} has 0 credits. Add a Single ($20) and check in?`)){
+  // If no credits, offer quick single purchase then proceed
+  if ((m.credits||0) <= 0) {
+    if (confirm(`${m.name} has 0 credits. Add a Single ($20) and check in?`)) {
       m.credits = (m.credits||0) + 1;
       const rec = {
         date: new Date().toISOString(),
@@ -242,44 +293,41 @@ $('#confirmCheckin').addEventListener('click', async ()=>{
         credits: 1,
         memberEmail: m.email || ''
       };
-      const txs=getPayments(); txs.unshift(rec); setPayments(txs);
-      await queueEvent({ type:'payment', payload: rec });
-    }else{
+      const txs = getPayments(); txs.unshift(rec); setPayments(txs);
+      await queueEvent({ type: 'payment', payload: rec });
+    } else {
       return;
     }
   }
 
-  m.credits -= 1; setMembers(members); renderMembers();
+  // Deduct and record attendance
+  m.credits -= 1;
+  setMembers(members); renderMembers();
 
   const att = { date:new Date().toISOString(), session:selectedSession, memberId:m.id, memberName:m.name };
-  const atts=getAttendance(); atts.unshift(att); setAttendance(atts);
+  const atts = getAttendance(); atts.unshift(att); setAttendance(atts);
   await queueEvent({ type:'attendance', payload: att });
 
-  $('#checkinMember').value=''; showToast('Checked in');
+  if ($('#checkinMember')) $('#checkinMember').value='';
+  showToast('Checked in');
   refreshReports();
 });
 
-// ---------- Reports (today + simple weekly) ----------
-function startOfWeek(d){const x=new Date(d); const day=(x.getDay()+6)%7; x.setHours(0,0,0,0); x.setDate(x.getDate()-day); return x;}
-function inSameWeek(a,b){return startOfWeek(a).getTime()===startOfWeek(b).getTime();}
+// ----- REPORTS -----
+function startOfWeek(d){ const x=new Date(d); const day=(x.getDay()+6)%7; x.setHours(0,0,0,0); x.setDate(x.getDate()-day); return x; }
+function inSameWeek(a,b){ return startOfWeek(a).getTime()===startOfWeek(b).getTime(); }
 
 function refreshReports(){
-  // Today
-  const atts=getAttendance();
-  const today=new Date().toDateString();
-  const tToday=atts.filter(a=>new Date(a.date).toDateString()===today);
-  $('#todaySummary') && ($('#todaySummary').textContent = tToday.length ? `${tToday.length} check-ins today.` : 'No check-ins today.');
+  // Today summary
+  const atts = getAttendance();
+  const today = new Date().toDateString();
+  const todays = atts.filter(a => new Date(a.date).toDateString() === today);
+  if ($('#todaySummary')) $('#todaySummary').textContent = todays.length ? `${todays.length} check-ins today.` : 'No check-ins today.';
 
-  // Week
-  const txs=getPayments(); const now=new Date();
-  const weekTxs=txs.filter(t=>inSameWeek(new Date(t.date), now));
-  const weekAtts=atts.filter(a=>inSameWeek(new Date(a.date), now));
-  const revenue=weekTxs.reduce((s,t)=>s+(t.amount||0),0);
-  const sold=weekTxs.reduce((s,t)=>s+(t.credits||0),0);
-  $('#weeklySummary') && ($('#weeklySummary').textContent = `Revenue: $${revenue} • Credits sold: ${sold} • Check-ins: ${weekAtts.length}`);
+  // (You can add weekly summary here later if desired)
 }
 
-// ---------- CSV Exports ----------
+// ----- CSV EXPORTS -----
 function toCSV(rows){return rows.map(r=>r.map(x=>'"'+String(x).replaceAll('"','""')+'"').join(',')).join('\n');}
 function download(n,t){const b=new Blob([t],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;a.click();URL.revokeObjectURL(a.href);}
 $('#exportAttendance')?.addEventListener('click',()=>{
@@ -289,7 +337,7 @@ $('#exportPayments')?.addEventListener('click',()=>{
   const a=getPayments(); const rows=[['date','type','memberId','memberName','amount','credits']]; a.forEach(x=>rows.push([x.date,x.type,x.memberId,x.memberName,x.amount,x.credits])); download('payments.csv',toCSV(rows));
 });
 
-// ---------- Init ----------
+// ----- INIT -----
 function init(){
   renderSessions();
   renderMembers();
