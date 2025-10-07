@@ -1,53 +1,37 @@
-// Boxing for Fitness — Service Worker with offline + instant update
-const CACHE_NAME = 'bff-gym-cache-v3';
+const CACHE_NAME = 'bff-gym-cache-v3'; // ← bump this
 const ASSETS = [
-  './',
-  './index.html',
-  './app.js',
-  './settings.js',
-  './manifest.json',
-  './assets/bff-logo.png',
-  './assets/icon-192.png',
-  './assets/icon-512.png'
+  './', './index.html', './app.js', './manifest.json',
+  './assets/icon-192.png', './assets/icon-512.png', './assets/bff-logo.png'
 ];
 
-// Cache on install
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
-  );
+// Install: pre-cache
+self.addEventListener('install', (e) => {
+  e.waitUntil(caches.open(CACHE_NAME).then((c) => c.addAll(ASSETS)));
   self.skipWaiting();
 });
 
-// Activate new version and clear old caches
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.map((key) => (key !== CACHE_NAME ? caches.delete(key) : null)))
+// Activate: delete old caches
+self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
     )
   );
   self.clients.claim();
 });
 
-// Serve cached assets first, fallback to network
-self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const fetchPromise = fetch(event.request)
-        .then((res) => {
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, res.clone()));
-          return res;
-        })
-        .catch(() => cached);
-      return cached || fetchPromise;
-    })
-  );
+// Network-first for HTML, cache-first for assets
+self.addEventListener('fetch', (e) => {
+  const req = e.request;
+  const isHTML = req.headers.get('accept')?.includes('text/html');
+  if (isHTML) {
+    e.respondWith(fetch(req).catch(() => caches.match('./index.html')));
+  } else {
+    e.respondWith(caches.match(req).then(res => res || fetch(req)));
+  }
 });
 
-// Allow skipping waiting when new SW is ready
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
+// Allow page to trigger immediate update
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
