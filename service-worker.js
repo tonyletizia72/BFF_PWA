@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bff-gym-cache-v3'; // ← bump this
+const CACHE_NAME = 'bff-gym-cache-v4'; // ← bump this
 const ASSETS = [
   './', './index.html', './app.js', './manifest.json',
   './assets/icon-192.png', './assets/icon-512.png', './assets/bff-logo.png'
