@@ -51,9 +51,34 @@
     @media (max-width: 900px) { .day-columns { grid-template-columns: repeat(2, 1fr); } }
     .day-col { background:#111217; border:1px solid var(--line); border-radius:12px; padding:12px; }
     .day-col h4 { margin:0 0 10px 0; color:#e5e7eb; }
-    .session { border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:#0f1014; cursor:pointer; user-select:none; margin-bottom:8px; text-align:center; transition: transform .06s ease, outline-color .12s ease, background .12s ease, border-color .12s ease; }
-    .session:hover { outline:2px solid #2a2b31; transform: translateY(-1px); }
-    .session.active { outline:2px solid var(--accent); border-color: var(--accent); background: linear-gradient(180deg, #16171d 0%, #111217 100%); box-shadow: 0 6px 18px rgba(239,68,68,.2); }
+
+    .session {
+      border:1px solid var(--line);
+      border-radius:12px;
+      padding:10px 12px;
+      background:#0f1014;
+      cursor:pointer;
+      user-select:none;
+      margin-bottom:8px;
+      text-align:center;
+      transition: transform .12s ease, background .12s ease, border-color .12s ease, color .12s ease, box-shadow .12s ease;
+    }
+    /* Strong, obvious hover */
+    .session:hover {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 22px rgba(239,68,68,.25);
+    }
+    /* Selected state */
+    .session.active {
+      background: linear-gradient(180deg, #16171d 0%, #111217 100%);
+      border-color: var(--accent);
+      box-shadow: 0 6px 18px rgba(239,68,68,.25);
+      outline: 2px solid var(--accent);
+      color: var(--text);
+    }
   </style>
 </head>
 <body>
@@ -170,11 +195,17 @@
           <button id="addCredit" class="btn">Apply Payment</button>
         </div>
       </div>
-      <h3 class="section-title">Recent Transactions</h3>
+
+      <div class="row" style="justify-content:space-between; align-items:center; margin-top:10px;">
+        <h3 class="section-title" style="margin:0;">Recent Transactions</h3>
+        <button id="clearPayments" class="btn sm ghost" title="Clear local list only">Clear list</button>
+      </div>
+
       <table id="txTable">
         <thead><tr><th>Date</th><th>Type</th><th>Member</th><th>Amount</th><th>Credits</th></tr></thead>
         <tbody></tbody>
       </table>
+      <div class="hint">Clearing the list only affects this iPad’s local history. Your Google Sheet remains unchanged.</div>
     </section>
 
     <!-- REPORTS -->
