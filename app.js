@@ -1,248 +1,436 @@
-/***************************************************
- * Boxing for Fitness App — Main Logic
- * Version: perth-1.1 (Perth-local server; URL updated)
- ***************************************************/
-(function ensureSettings(){
-  if (typeof window.SETTINGS === 'undefined') {
+/***********************
+ * Boxing for Fitness – PWA client
+ * - Uses settings.js (window.SETTINGS) for webhook URL + secret
+ * - Falls back to embedded SETTINGS if settings.js is missing
+ * - Sessions: fixed timetable (Mon–Sat) with hover/active highlighting
+ * - Members: add / delete, +1 free credit on add
+ * - Payments: single, 10-pack, 20-pack; posts to Google Apps Script
+ * - Attendance: check-in deducts 1 credit (prompts to add if 0)
+ * - Recent transactions kept locally (with Clear button)
+ * - Perth time formatting on client for display (server logs Perth time too)
+ ***********************/
+
+(function ensureSettings() {
+  if (typeof window.SETTINGS === "undefined") {
     window.SETTINGS = {
-      WEBHOOK_URL: "https://script.google.com/macros/s/AKfycbyI-9BNZT-FCeE8vq2eIHsnqvfdfepUkLWoP1Yw0qUbLW-2_6XmyTRPiaqE2PlU41-wJA/exec",
+      WEBHOOK_URL:
+        "https://script.google.com/macros/s/AKfycbzth19M5OuTnruzpv_5dRFSt_4UfjleReZm3N5VuSqWw-6EvZgbhu4wA3r91DsmHNW9/exec",
       SECRET: "BFF"
     };
-    console.warn('[BFF] settings.js not found; using embedded fallback SETTINGS.');
+    console.warn("[BFF] settings.js not found; using embedded fallback SETTINGS.");
   }
 })();
 console.log("[BFF] Active Webhook:", window.SETTINGS.WEBHOOK_URL);
 
-// Pricing
-const PRICING = {
-  single: { label: 'Single $20', amount: 20, credits: 1 },
-  '10':   { label: '10-Pack $180', amount: 180, credits: 10 },
-  '20':   { label: '20-Pack $360', amount: 360, credits: 20 },
+/* ------------------ Utilities ------------------ */
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+const STORE_KEYS = {
+  MEMBERS: "bff.members.v1",
+  TX: "bff.tx.v1",
+  SELECTED_SESSION: "bff.selectedSession.v1"
 };
 
-// Local storage helpers
-const LS = { queue:'bff_queue', members:'bff_members', payments:'bff_payments', attendance:'bff_att' };
-const read  = (k,d=[]) => JSON.parse(localStorage.getItem(k) || JSON.stringify(d));
-const write = (k,v)   => localStorage.setItem(k, JSON.stringify(v));
-
-// Queue to Apps Script (robust/offline)
-async function queueEvent(ev){
-  const q = read(LS.queue); q.push(ev); write(LS.queue,q);
-  await flushQueue();
+const PERTH_TZ = "Australia/Perth";
+function perthNow() {
+  return new Date(new Date().toLocaleString("en-US", { timeZone: PERTH_TZ }));
 }
-async function flushQueue(){
-  let q = read(LS.queue); if(!q.length) return;
-  while(q.length){
-    const ev = q[0];
-    try{
-      await fetch(window.SETTINGS.WEBHOOK_URL, {
-        method: 'POST',
-        mode: 'no-cors', // avoid CORS blocking on GH Pages/iOS
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ secret: window.SETTINGS.SECRET, ...ev })
+function fmtPerth(dt = new Date()) {
+  return new Intl.DateTimeFormat("en-AU", {
+    timeZone: PERTH_TZ, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: true
+  }).format(dt);
+}
+
+function toast(msg) {
+  const t = $("#toast");
+  if (!t) return alert(msg);
+  t.textContent = msg;
+  t.style.display = "block";
+  setTimeout(() => (t.style.display = "none"), 1400);
+}
+
+/* ------------------ Local store ------------------ */
+
+function loadMembers() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEYS.MEMBERS)) || []; }
+  catch { return []; }
+}
+function saveMembers(list) {
+  localStorage.setItem(STORE_KEYS.MEMBERS, JSON.stringify(list));
+}
+function loadTx() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEYS.TX)) || []; }
+  catch { return []; }
+}
+function saveTx(list) {
+  localStorage.setItem(STORE_KEYS.TX, JSON.stringify(list));
+}
+
+/* ------------------ Data & UI state ------------------ */
+
+let MEMBERS = loadMembers();
+let TX = loadTx();
+let SELECTED_SESSION = localStorage.getItem(STORE_KEYS.SELECTED_SESSION) || "";
+
+/* Session timetable — vertically aligned by day */
+const SESSIONS = [
+  { day: "Monday",     times: ["6:00 AM","9:30 AM","5:00 PM","6:30 PM"] },
+  { day: "Tuesday",    times: ["6:00 AM","9:30 AM","5:00 PM","6:30 PM"] },
+  { day: "Wednesday",  times: ["6:00 AM","9:30 AM","5:00 PM","6:30 PM"] },
+  { day: "Thursday",   times: ["6:00 AM","9:30 AM","5:00 PM","6:30 PM"] },
+  { day: "Friday",     times: ["6:00 AM","9:30 AM"] },
+  { day: "Saturday",   times: ["8:00 AM","9:30 AM"] }
+];
+
+/* ------------------ Rendering ------------------ */
+
+function navTo(tab) {
+  $$("nav button").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+  ["checkin","members","payments","reports"].forEach(k => {
+    const sec = $("#tab-" + k);
+    if (sec) sec.style.display = (k === tab) ? "" : "none";
+  });
+}
+
+function renderSessions() {
+  const wrap = $("#sessionGrid");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+
+  const grid = document.createElement("div");
+  grid.className = "grid sessions-vertical";
+
+  SESSIONS.forEach(col => {
+    const colDiv = document.createElement("div");
+    colDiv.className = "session-column cardish";
+    const h = document.createElement("div");
+    h.className = "day-title";
+    h.textContent = col.day;
+    colDiv.appendChild(h);
+
+    col.times.forEach(t => {
+      const btn = document.createElement("button");
+      btn.className = "sessionBtn";
+      btn.textContent = t;
+      btn.title = `${col.day} ${t}`;
+      const full = `${col.day} ${t}`;
+      if (SELECTED_SESSION === full) btn.classList.add("active");
+      btn.addEventListener("mouseenter", () => btn.classList.add("hover"));
+      btn.addEventListener("mouseleave", () => btn.classList.remove("hover"));
+      btn.addEventListener("click", () => {
+        SELECTED_SESSION = full;
+        localStorage.setItem(STORE_KEYS.SELECTED_SESSION, SELECTED_SESSION);
+        $("#selectedSession").value = SELECTED_SESSION;
+        $$(".sessionBtn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
       });
-      q.shift(); write(LS.queue,q);
-    }catch(e){ console.warn('webhook failed, will retry', e); break; }
-  }
-}
-window.addEventListener('online', flushQueue);
-
-// UI helpers
-const $  = s => document.querySelector(s);
-const $$ = s => document.querySelectorAll(s);
-const toast = $('#toast');
-const showToast = (m)=>{ if(!toast) return; toast.textContent=m; toast.style.display='block'; setTimeout(()=>toast.style.display='none',1600); };
-
-// Tabs
-$$('nav button[data-tab]').forEach(btn=>{
-  btn.onclick = ()=>{
-    $$('nav button').forEach(b=>b.classList.remove('active'));
-    btn.classList.add('active');
-    ['checkin','members','payments','reports'].forEach(t=>$('#tab-'+t).style.display='none');
-    $('#tab-'+btn.dataset.tab).style.display='block';
-    if(btn.dataset.tab==='members')  renderMembers();
-    if(btn.dataset.tab==='payments') refreshPayments();
-    if(btn.dataset.tab==='reports')  refreshReports();
-  };
-});
-
-// Sessions (static HTML): hover/active + selected text
-let selectedSession = '';
-function wireSessions(){
-  const boxes = $$('#sessionGrid .session');
-  boxes.forEach(box=>{
-    box.addEventListener('click', ()=>{
-      boxes.forEach(b=>b.classList.remove('active'));
-      box.classList.add('active');
-      selectedSession = `${box.dataset.day} ${box.dataset.time}`;
-      const sel = $('#selectedSession'); if (sel) sel.value = selectedSession;
+      colDiv.appendChild(btn);
     });
-    box.addEventListener('keydown', (e)=>{
-      if(e.key==='Enter' || e.key===' '){ e.preventDefault(); box.click(); }
-    });
-    box.setAttribute('tabindex','0');
-    box.setAttribute('role','button');
+
+    grid.appendChild(colDiv);
   });
-  if (boxes[0]) boxes[0].click();
+
+  wrap.appendChild(grid);
+  $("#selectedSession").value = SELECTED_SESSION || "";
 }
 
-// Members
-function getMembers(){ return read(LS.members); }
-function setMembers(v){ write(LS.members,v); }
+function renderMemberDatalist() {
+  const list = $("#memberList");
+  if (!list) return;
+  list.innerHTML = MEMBERS.map(m => (
+    `<option value="${m.name} (${m.phone || ""})">`
+  )).join("");
+}
 
-$('#addMember')?.addEventListener('click', async ()=>{
-  const name  = $('#mName')?.value.trim(); if(!name) return alert('Name required');
-  const phone = $('#mPhone')?.value.trim() || '';
-  const email = $('#mEmail')?.value.trim() || '';
-  const notes = $('#mNotes')?.value.trim() || '';
-
-  const members = getMembers();
-  const id = Date.now();
-  const member = { id, name, phone, email, notes, credits: 1, createdAt: new Date().toISOString() };
-  members.push(member); setMembers(members);
-
-  await queueEvent({ type:'member_add', payload:{ member } });
-
-  ['mName','mPhone','mEmail','mNotes'].forEach(id=>{ const el=$('#'+id); if(el) el.value=''; });
-  renderMembers(); showToast('Member added (+1 free)');
-});
-
-function renderMembers(){
-  const tbody = $('#memberTable tbody'); if(!tbody) return;
-  tbody.innerHTML = '';
-  const members = getMembers().sort((a,b)=>a.name.localeCompare(b.name));
-  members.forEach(m=>{
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
+function renderMemberTable() {
+  const tbody = $("#memberTable tbody");
+  if (!tbody) return;
+  tbody.innerHTML = MEMBERS.map(m => `
+    <tr>
       <td>${m.name}</td>
-      <td>${m.phone || ''}</td>
-      <td>${m.email || ''}</td>
-      <td><span class="chip">${m.credits||0}</span></td>
-      <td style="display:flex;gap:8px;">
-        <button class="btn sm secondary" data-action="plus1" data-id="${m.id}">+1</button>
-        <button class="btn sm ghost" data-action="delete" data-id="${m.id}">🗑️</button>
+      <td>${m.phone || ""}</td>
+      <td><span class="chip">${m.credits || 0}</span></td>
+      <td class="row" style="gap:8px;justify-content:flex-end">
+        <button class="btn sm secondary" data-email="${m.email || ""}" data-member="${m.id}">Email</button>
+        <button class="btn sm ghost" data-del="${m.id}">Delete</button>
       </td>
-      <td>${m.email ? `<button class="btn sm ghost contactMember" data-email="${m.email}" data-name="${m.name}">✉️ Contact</button>` : ''}</td>
-    `;
-    tbody.appendChild(tr);
-  });
+    </tr>
+  `).join("");
 
-  tbody.querySelectorAll('button[data-action="plus1"]').forEach(b=>{
-    b.onclick = ()=>{
-      const id = Number(b.dataset.id);
-      const ms = getMembers();
-      const m = ms.find(x=>x.id===id); if(!m) return;
-      m.credits = (m.credits||0)+1; setMembers(ms); renderMembers(); showToast('Credit added');
-    };
+  // bind delete / email
+  $$('button[data-del]').forEach(b => b.onclick = () => deleteMember(b.dataset.del));
+  $$('button[data-email]').forEach(b => b.onclick = () => {
+    const id = b.dataset.member;
+    const m = MEMBERS.find(x => String(x.id) === String(id));
+    if (!m || !m.email) return toast("No email saved for this member.");
+    window.location.href = `mailto:${encodeURIComponent(m.email)}?subject=${encodeURIComponent("Boxing for Fitness")}`;
   });
-  tbody.querySelectorAll('button[data-action="delete"]').forEach(b=>{
-    b.onclick = async ()=>{
-      const id = Number(b.dataset.id);
-      const ms = getMembers();
-      const m  = ms.find(x=>x.id===id); if(!m) return;
-      if(!confirm(`Delete ${m.name}?`)) return;
-      setMembers(ms.filter(x=>x.id!==id)); renderMembers(); showToast('Member deleted');
-      await queueEvent({ type:'member_delete', payload:{ memberId:id, memberName:m.name } });
-    };
-  });
-  tbody.querySelectorAll('.contactMember').forEach(btn=>{
-    btn.onclick = ()=>{
-      const email = btn.dataset.email;
-      const name  = btn.dataset.name || '';
-      const subject = encodeURIComponent('Boxing for Fitness – Message');
-      const body    = encodeURIComponent(`Hi ${name},\n\n`);
-      window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
-    };
-  });
-
-  const dl = $('#memberList');
-  if (dl) dl.innerHTML = members.map(m=>`<option value="${m.name} (${m.phone||''})"></option>`).join('');
 }
 
-// Payments
-function getPayments(){ return read(LS.payments); }
-function setPayments(v){ write(LS.payments,v); }
-
-$('#addCredit')?.addEventListener('click', async ()=>{
-  const input = $('#payMember')?.value.trim();
-  const pack  = $('#payPack')?.value;
-  if(!input || !pack) return;
-
-  const members = getMembers();
-  const m = members.find(x=>input.includes(x.name));
-  if(!m) return alert('Select a valid member');
-
-  const p = PRICING[pack];
-  m.credits = (m.credits||0) + p.credits; setMembers(members); renderMembers();
-
-  const rec = { date:new Date().toISOString(), type:pack, memberId:m.id, memberName:m.name, amount:p.amount, credits:p.credits, memberEmail:m.email||'' };
-  const txs = getPayments(); txs.unshift(rec); setPayments(txs);
-  await queueEvent({ type:'payment', payload:rec });
-
-  if($('#payMember')) $('#payMember').value='';
-  showToast('Payment applied'); refreshPayments(); refreshReports();
-});
-
-function refreshPayments(){
-  const tb = $('#txTable tbody'); if(!tb) return;
-  tb.innerHTML=''; getPayments().forEach(t=>{
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${new Date(t.date).toLocaleString()}</td>
-      <td>${PRICING[t.type]?.label||t.type}</td>
+function renderPaymentsTable() {
+  const tbody = $("#txTable tbody");
+  if (!tbody) return;
+  tbody.innerHTML = TX.map(t => `
+    <tr>
+      <td>${fmtPerth(new Date(t.ts))}</td>
+      <td>${t.type}</td>
       <td>${t.memberName}</td>
       <td>$${t.amount}</td>
-      <td>${t.credits}</td>`;
-    tb.appendChild(tr);
+      <td>${t.credits}</td>
+    </tr>
+  `).join("");
+}
+
+/* ------------------ Member ops ------------------ */
+
+function addMember() {
+  const name = $("#mName").value.trim();
+  const phone = $("#mPhone").value.trim();
+  const notes = $("#mNotes").value.trim();
+  if (!name) return toast("Name is required.");
+
+  const member = {
+    id: Date.now(),
+    name, phone, notes,
+    email: "", // can be set later via CSV import if needed
+    credits: 1, // first class free
+    createdAt: new Date().toISOString()
+  };
+  MEMBERS.push(member);
+  saveMembers(MEMBERS);
+  renderMemberDatalist();
+  renderMemberTable();
+  toast("Member added (+1 free).");
+
+  // Post to server (member_add)
+  queueEvent("member_add", { member });
+}
+
+function deleteMember(id) {
+  const m = MEMBERS.find(x => String(x.id) === String(id));
+  if (!m) return;
+  if (!confirm(`Delete ${m.name}?`)) return;
+
+  MEMBERS = MEMBERS.filter(x => String(x.id) !== String(id));
+  saveMembers(MEMBERS);
+  renderMemberDatalist();
+  renderMemberTable();
+  toast("Member deleted.");
+
+  queueEvent("member_delete", { memberId: m.id, memberName: m.name });
+}
+
+/* ------------------ Payments ------------------ */
+
+function packToCreditsAmount(val) {
+  switch (val) {
+    case "single": return { credits: 1, amount: 20, label: "Single $20" };
+    case "10":     return { credits: 10, amount: 180, label: "10-Pack $180" };
+    case "20":     return { credits: 20, amount: 360, label: "20-Pack $360" };
+    default:       return { credits: 0, amount: 0, label: "" };
+  }
+}
+
+function applyPayment() {
+  const memberNameInput = $("#payMember").value.trim();
+  const packSel = $("#payPack").value;
+  const { credits, amount, label } = packToCreditsAmount(packSel);
+
+  const m = resolveMemberByInput(memberNameInput);
+  if (!m) return alert("Select a valid member.");
+
+  m.credits = (m.credits || 0) + credits;
+  saveMembers(MEMBERS);
+  renderMemberTable();
+
+  const tx = {
+    ts: new Date().toISOString(),
+    type: label,
+    memberId: m.id,
+    memberName: m.name,
+    amount,
+    credits
+  };
+  TX.unshift(tx);
+  saveTx(TX);
+  renderPaymentsTable();
+
+  queueEvent("payment", {
+    type: label,
+    memberId: m.id,
+    memberName: m.name,
+    amount,
+    credits,
+    memberEmail: m.email || ""
+  });
+
+  toast("Payment applied.");
+}
+
+function clearTransactions() {
+  if (!confirm("Clear recent transactions (local only)?")) return;
+  TX = [];
+  saveTx(TX);
+  renderPaymentsTable();
+  toast("Cleared.");
+}
+
+/* ------------------ Check-in ------------------ */
+
+function resolveMemberByInput(input) {
+  // input looks like "Name (phone)"; try to match by name prefix or phone
+  const s = input.toLowerCase();
+  let m = MEMBERS.find(x =>
+    x.name.toLowerCase() === s || s.startsWith(x.name.toLowerCase())
+  );
+  if (!m) {
+    // pull phone between parentheses
+    const match = /\(([^)]+)\)$/.exec(input);
+    if (match) {
+      const ph = match[1].replace(/\s+/g,"");
+      m = MEMBERS.find(x => (x.phone||"").replace(/\s+/g,"") === ph);
+    }
+  }
+  return m;
+}
+
+function confirmCheckin() {
+  const memberInput = $("#checkinMember").value.trim();
+  if (!memberInput) return toast("Select a member.");
+  if (!SELECTED_SESSION) return toast("Select a session.");
+
+  const m = resolveMemberByInput(memberInput);
+  if (!m) return toast("Select a valid member.");
+
+  if ((m.credits || 0) <= 0) {
+    if (!confirm(`${m.name} has 0 credits. Add a single class ($20) now?`)) return;
+    // simulate a single purchase
+    $("#payMember").value = `${m.name} (${m.phone || ""})`;
+    $("#payPack").value = "single";
+    applyPayment();
+    return;
+  }
+
+  // deduct one credit
+  m.credits = (m.credits || 0) - 1;
+  saveMembers(MEMBERS);
+  renderMemberTable();
+
+  queueEvent("attendance", {
+    session: SELECTED_SESSION,
+    memberId: m.id,
+    memberName: m.name
+  });
+
+  toast("Checked in.");
+}
+
+/* ------------------ Server sync ------------------ */
+
+async function queueEvent(type, payload) {
+  // Post directly (no background queue needed)
+  try {
+    const res = await fetch(window.SETTINGS.WEBHOOK_URL, {
+      method: "POST",
+      // text/plain to avoid CORS preflight
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        secret: window.SETTINGS.SECRET,
+        type,
+        payload
+      })
+    });
+    const txt = await res.text();
+    if (txt !== "OK") console.warn("[BFF] Webhook non-OK:", txt);
+  } catch (err) {
+    console.error("[BFF] Webhook error:", err);
+    alert("Network error sending to Sheets. Data is safe locally; try again later.");
+  }
+}
+
+/* ------------------ Wire up ------------------ */
+
+function bindNav() {
+  $$("nav button").forEach(b => {
+    b.onclick = () => navTo(b.dataset.tab);
   });
 }
 
-$('#clearPayments')?.addEventListener('click', ()=>{
-  if(!confirm('Clear recent transactions on this device? This does NOT affect the Google Sheet.')) return;
-  setPayments([]); refreshPayments(); showToast('Local transactions cleared');
-});
+function bindForms() {
+  const addBtn = $("#addMember");
+  if (addBtn) addBtn.onclick = addMember;
 
-// Attendance / check-in
-function getAttendance(){ return read(LS.attendance); }
-function setAttendance(v){ write(LS.attendance,v); }
+  const payBtn = $("#addCredit");
+  if (payBtn) payBtn.onclick = applyPayment;
 
-$('#confirmCheckin')?.addEventListener('click', async ()=>{
-  if(!selectedSession) return alert('Select a session');
-  const input = $('#checkinMember')?.value.trim();
-  const members = getMembers();
-  const m = members.find(x => input && input.includes(x.name));
-  if(!m) return alert('Select a valid member');
-
-  if((m.credits||0) <= 0){
-    if(confirm(`${m.name} has 0 credits. Add a Single ($20) and check in?`)){
-      m.credits = (m.credits||0)+1;
-      const rec = { date:new Date().toISOString(), type:'single', memberId:m.id, memberName:m.name, amount:20, credits:1, memberEmail:m.email||'' };
-      const txs=getPayments(); txs.unshift(rec); setPayments(txs);
-      await queueEvent({ type:'payment', payload:rec });
-    } else return;
+  const clearBtn = document.createElement("button");
+  clearBtn.className = "btn ghost sm";
+  clearBtn.textContent = "Clear Recent";
+  clearBtn.style.marginLeft = "8px";
+  const payPanel = $("#tab-payments .row");
+  if (payPanel) {
+    payPanel.appendChild(clearBtn);
+    clearBtn.onclick = clearTransactions;
   }
 
-  m.credits -= 1; setMembers(members); renderMembers();
-
-  const att = { date:new Date().toISOString(), session:selectedSession, memberId:m.id, memberName:m.name };
-  const atts=getAttendance(); atts.unshift(att); setAttendance(atts);
-  await queueEvent({ type:'attendance', payload:att });
-
-  if($('#checkinMember')) $('#checkinMember').value='';
-  showToast('Checked in'); refreshReports();
-});
-
-// Reports / exports
-function refreshReports(){
-  const atts = getAttendance();
-  const today = new Date().toDateString();
-  const todays = atts.filter(a => new Date(a.date).toDateString() === today);
-  if($('#todaySummary')) $('#todaySummary').textContent = todays.length ? `${todays.length} check-ins today.` : 'No check-ins today.';
+  const checkinBtn = $("#confirmCheckin");
+  if (checkinBtn) checkinBtn.onclick = confirmCheckin;
 }
-function toCSV(rows){return rows.map(r=>r.map(x=>'"'+String(x).replaceAll('"','""')+'"').join(',')).join('\n');}
-function download(n,t){const b=new Blob([t],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;a.click();URL.revokeObjectURL(a.href);}
-$('#exportAttendance')?.addEventListener('click',()=>{ const a=getAttendance(); const rows=[['date','session','memberId','memberName']]; a.forEach(x=>rows.push([x.date,x.session,x.memberId,x.memberName])); download('attendance.csv',toCSV(rows)); });
-$('#exportPayments')?.addEventListener('click',()=>{ const a=getPayments(); const rows=[['date','type','memberId','memberName','amount','credits']]; a.forEach(x=>rows.push([x.date,x.type,x.memberId,x.memberName,x.amount,x.credits])); download('payments.csv',toCSV(rows)); });
 
-// Init
-function init(){ wireSessions(); renderMembers(); refreshPayments(); refreshReports(); flushQueue(); }
-init();
+/* ------------------ Init ------------------ */
+
+function init() {
+  // Tabs
+  bindNav();
+  navTo("checkin");
+
+  // Sessions
+  renderSessions();
+
+  // Members + payments
+  renderMemberDatalist();
+  renderMemberTable();
+  renderPaymentsTable();
+
+  // Forms/events
+  bindForms();
+
+  // Set defaults
+  if (!SELECTED_SESSION) {
+    SELECTED_SESSION = "Monday 6:00 AM";
+    localStorage.setItem(STORE_KEYS.SELECTED_SESSION, SELECTED_SESSION);
+    $("#selectedSession").value = SELECTED_SESSION;
+  }
+}
+
+document.addEventListener("DOMContentLoaded", init);
+
+/* ------------------ Styling helpers injected for hover ------------------ */
+const style = document.createElement("style");
+style.textContent = `
+  .sessions-vertical {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(150px, 1fr));
+    gap: 16px;
+  }
+  .session-column { padding: 12px; border:1px solid var(--line); border-radius:12px; background:#111217; }
+  .day-title { font-weight: 700; margin-bottom: 8px; color:#e5e7eb }
+  .sessionBtn {
+    width: 100%;
+    margin: 6px 0;
+    border:1px solid var(--line);
+    background:#0e0f12;
+    color: var(--text);
+    border-radius:10px;
+    padding:10px 12px;
+    cursor:pointer;
+    transition: transform .06s ease, background .1s ease, border-color .1s ease;
+  }
+  .sessionBtn.hover { background:#161821; border-color:#2f3240; transform: translateY(-1px); }
+  .sessionBtn.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .cardish { box-shadow: var(--shadow); }
+`;
+document.head.appendChild(style);
