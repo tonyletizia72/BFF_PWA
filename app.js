@@ -1,3 +1,8 @@
+/***************************************************
+ * Boxing for Fitness App — Main Logic
+ * Version: perth-1.1 (Perth-local server; URL updated)
+ ***************************************************/
+
 (function ensureSettings(){
   if (typeof window.SETTINGS === 'undefined') {
     window.SETTINGS = {
@@ -7,6 +12,7 @@
     console.warn('[BFF] settings.js not found; using embedded fallback SETTINGS.');
   }
 })();
+console.log("[BFF] Active Webhook:", window.SETTINGS.WEBHOOK_URL);
 
 // Pricing
 const PRICING = {
@@ -20,7 +26,7 @@ const LS = { queue:'bff_queue', members:'bff_members', payments:'bff_payments', 
 const read  = (k,d=[]) => JSON.parse(localStorage.getItem(k) || JSON.stringify(d));
 const write = (k,v)   => localStorage.setItem(k, JSON.stringify(v));
 
-// Queue to Apps Script (no-cors)
+// Queue to Apps Script (robust/offline)
 async function queueEvent(ev){
   const q = read(LS.queue); q.push(ev); write(LS.queue,q);
   await flushQueue();
@@ -30,11 +36,11 @@ async function flushQueue(){
   while(q.length){
     const ev = q[0];
     try{
-      await fetch(SETTINGS.WEBHOOK_URL, {
+      await fetch(window.SETTINGS.WEBHOOK_URL, {
         method: 'POST',
-        mode: 'no-cors',
+        mode: 'no-cors', // avoid CORS blocking on GH Pages/iOS
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ secret: SETTINGS.SECRET, ...ev })
+        body: JSON.stringify({ secret: window.SETTINGS.SECRET, ...ev })
       });
       q.shift(); write(LS.queue,q);
     }catch(e){ console.warn('webhook failed, will retry', e); break; }
@@ -61,7 +67,7 @@ $$('nav button[data-tab]').forEach(btn=>{
   };
 });
 
-// Sessions (static HTML): wire up hover/active + selected field
+// Sessions (static HTML): hover/active + selected text
 let selectedSession = '';
 function wireSessions(){
   const boxes = $$('#sessionGrid .session');
@@ -72,7 +78,6 @@ function wireSessions(){
       selectedSession = `${box.dataset.day} ${box.dataset.time}`;
       const sel = $('#selectedSession'); if (sel) sel.value = selectedSession;
     });
-    // keyboard support
     box.addEventListener('keydown', (e)=>{
       if(e.key==='Enter' || e.key===' '){ e.preventDefault(); box.click(); }
     });
