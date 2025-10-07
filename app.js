@@ -1,184 +1,267 @@
-// app.js — Boxing for Fitness PWA
-// Handles offline queue, UI tabs, member/payments/attendance management
+// app.js — Boxing for Fitness PWA (Sheets sync + no-cors + payments table)
 
-// ---------- STORAGE ----------
-function getQueue() {
-  return JSON.parse(localStorage.getItem('bff_queue') || '[]');
-}
-function setQueue(q) {
-  localStorage.setItem('bff_queue', JSON.stringify(q));
-}
-function getMembers() {
-  return JSON.parse(localStorage.getItem('bff_members') || '[]');
-}
-function setMembers(m) {
-  localStorage.setItem('bff_members', JSON.stringify(m));
-}
+// ---------- Config ----------
+const PRICING = {
+  single: { label: 'Single $20', amount: 20, credits: 1 },
+  '10':   { label: '10-Pack $180', amount: 180, credits: 10 },
+  '20':   { label: '20-Pack $360', amount: 360, credits: 20 },
+};
 
-// ---------- GOOGLE SHEETS SYNC ----------
-async function queueEvent(event) {
-  const q = getQueue();
-  q.push(event);
-  setQueue(q);
+const TIMETABLE = [
+  { day: 'Monday',    times: ['6:00 AM','9:30 AM','5:00 PM','6:30 PM'] },
+  { day: 'Tuesday',   times: ['6:00 AM','9:30 AM','5:00 PM','6:30 PM'] },
+  { day: 'Wednesday', times: ['6:00 AM','9:30 AM','5:00 PM','6:30 PM'] },
+  { day: 'Thursday',  times: ['6:00 AM','9:30 AM','5:00 PM','6:30 PM'] },
+  { day: 'Friday',    times: ['6:00 AM','9:30 AM'] },
+  { day: 'Saturday',  times: ['8:00 AM','9:30 AM'] },
+];
+
+// ---------- Local storage ----------
+const LS = {
+  queue: 'bff_queue',
+  members: 'bff_members',
+  payments: 'bff_payments',
+  attendance: 'bff_att',
+};
+const read  = (k, d=[]) => JSON.parse(localStorage.getItem(k) || JSON.stringify(d));
+const write = (k, v)   => localStorage.setItem(k, JSON.stringify(v));
+
+// ---------- Queue → Google Sheets (no-cors to avoid preflight) ----------
+async function queueEvent(ev){
+  const q = read(LS.queue); q.push(ev); write(LS.queue,q);
   await flushQueue();
 }
-
-async function flushQueue() {
-  const q = getQueue();
-  if (!q.length) return;
-  console.log('[BFF] flushing queue', q.length);
-
-  while (q.length) {
+async function flushQueue(){
+  let q = read(LS.queue); if(!q.length) return;
+  while(q.length){
     const ev = q[0];
-    try {
-      // Avoid CORS preflight — use no-cors + text/plain
-      const resp = await fetch(SETTINGS.WEBHOOK_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    try{
+      await fetch(SETTINGS.WEBHOOK_URL,{
+        method:'POST',
+        mode:'no-cors',
+        headers:{'Content-Type':'text/plain;charset=utf-8'},
         body: JSON.stringify({ secret: SETTINGS.SECRET, ...ev })
       });
-
-      // Response is opaque when using no-cors, assume success
-      console.log('[BFF] webhook sent (opaque/ok), dequeuing');
-      q.shift();
-      setQueue(q);
-    } catch (err) {
-      console.warn('[BFF] webhook error, will retry later', err);
+      q.shift(); write(LS.queue,q);
+    }catch(err){
+      console.warn('[BFF] webhook send failed; will retry later', err);
       break;
     }
   }
 }
+window.addEventListener('online', flushQueue);
 
-// ---------- UI TAB HANDLING ----------
-document.querySelectorAll('nav button[data-tab]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+// ---------- Helpers ----------
+const $  = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+const toast = $('#toast');
+function showToast(msg){ toast.textContent=msg; toast.style.display='block'; setTimeout(()=>toast.style.display='none',1600); }
+
+// ---------- Tabs ----------
+$$('nav button[data-tab]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    $$('nav button').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
-    const tab = btn.dataset.tab;
-    document.querySelectorAll('section[id^="tab-"]').forEach(sec => sec.style.display = 'none');
-    document.getElementById(`tab-${tab}`).style.display = '';
+    ['checkin','members','payments','reports'].forEach(t=>$('#tab-'+t).style.display='none');
+    $('#tab-'+btn.dataset.tab).style.display='block';
+    if(btn.dataset.tab==='members')  renderMembers();
+    if(btn.dataset.tab==='payments') refreshPayments();
+    if(btn.dataset.tab==='reports')  refreshReports();
   });
 });
 
-// ---------- SESSION GRID ----------
-const sessions = [
-  { day: 'Mon', time: '6:00 AM', name: 'Morning Box' },
-  { day: 'Mon', time: '5:30 PM', name: 'Evening Box' },
-  { day: 'Wed', time: '6:00 AM', name: 'Morning Box' },
-  { day: 'Wed', time: '5:30 PM', name: 'Evening Box' },
-  { day: 'Sat', time: '7:30 AM', name: 'Weekend Warrior' }
-];
-const sessionGrid = document.getElementById('sessionGrid');
-sessions.forEach(s => {
-  const div = document.createElement('div');
-  div.className = 'session';
-  div.innerHTML = `<div class="time">${s.time}</div><div>${s.day} – ${s.name}</div>`;
-  div.onclick = () => {
-    document.getElementById('selectedSession').value = `${s.day} ${s.time} ${s.name}`;
-  };
-  sessionGrid.appendChild(div);
+// ---------- Sessions (vertical by day) ----------
+const sessionGrid = $('#sessionGrid');
+let selectedSession = '';
+function renderSessions(){
+  sessionGrid.innerHTML='';
+  TIMETABLE.forEach(col=>{
+    const box=document.createElement('div');
+    box.className='day-col';
+    box.innerHTML=`<h4>${col.day}</h4>`;
+    col.times.forEach(t=>{
+      const slot=document.createElement('div');
+      slot.className='slot';
+      slot.innerHTML=`<div class="time">${t}</div>`;
+      slot.onclick=()=>{ selectedSession=`${col.day} ${t}`; $('#selectedSession').value=selectedSession; };
+      box.appendChild(slot);
+    });
+    sessionGrid.appendChild(box);
+  });
+}
+
+// ---------- Members ----------
+function getMembers(){ return read(LS.members); }
+function setMembers(v){ write(LS.members,v); }
+
+$('#addMember').addEventListener('click', async ()=>{
+  const name  = $('#mName').value.trim(); if(!name) return alert('Name required');
+  const phone = $('#mPhone').value.trim();
+  const email = ($('#mEmail')?.value || '').trim();
+  const notes = $('#mNotes').value.trim();
+
+  const members=getMembers();
+  const id=Date.now();
+  const member={ id, name, phone, email, notes, credits:1, createdAt:new Date().toISOString() };
+  members.push(member); setMembers(members);
+
+  await queueEvent({ type:'member_add', payload:{ member } });
+
+  $('#mName').value=$('#mPhone').value=$('#mNotes').value='';
+  if($('#mEmail')) $('#mEmail').value='';
+  renderMembers(); showToast('Member added (+1 free)');
 });
 
-// ---------- ADD MEMBER ----------
-document.getElementById('addMember').addEventListener('click', async () => {
-  const name = document.getElementById('mName').value.trim();
-  const phone = document.getElementById('mPhone').value.trim();
-  if (!name) return alert('Enter member name');
-  const notes = document.getElementById('mNotes').value.trim();
-  const members = getMembers();
-  const id = Date.now();
-  const member = { id, name, phone, notes, credits: 1, createdAt: new Date().toISOString() };
-  members.push(member);
-  setMembers(members);
-  renderMembers();
-  await queueEvent({ type: 'member_add', payload: { member } });
-  showToast('Member added +1 free credit');
-});
-
-// ---------- RENDER MEMBERS ----------
-function renderMembers() {
-  const tbody = document.querySelector('#memberTable tbody');
-  tbody.innerHTML = '';
-  getMembers().forEach(m => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
+function renderMembers(){
+  const tbody=$('#memberTable tbody'); tbody.innerHTML='';
+  const members=getMembers().sort((a,b)=>a.name.localeCompare(b.name));
+  members.forEach(m=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
       <td>${m.name}</td>
-      <td>${m.phone}</td>
-      <td>${m.credits}</td>
-      <td><button class="btn sm secondary" data-id="${m.id}">Delete</button></td>`;
+      <td>${m.phone||''}</td>
+      <td><span class="chip">${m.credits||0}</span></td>
+      <td style="display:flex;gap:8px;">
+        <button class="btn sm secondary" data-action="plus1" data-id="${m.id}">+1</button>
+        <button class="btn sm ghost" data-action="delete" data-id="${m.id}">🗑️</button>
+      </td>`;
     tbody.appendChild(tr);
   });
 
-  // Delete handlers
-  tbody.querySelectorAll('button[data-id]').forEach(btn => {
-    btn.onclick = async () => {
-      const id = parseInt(btn.dataset.id);
-      let members = getMembers().filter(x => x.id !== id);
-      setMembers(members);
-      renderMembers();
-      await queueEvent({ type: 'member_delete', payload: { id } });
-      showToast('Member deleted');
-    };
+  // +1
+  tbody.querySelectorAll('button[data-action="plus1"]').forEach(b=>b.onclick=()=>{
+    const id=Number(b.dataset.id); const ms=getMembers(); const m=ms.find(x=>x.id===id); if(!m) return;
+    m.credits=(m.credits||0)+1; setMembers(ms); renderMembers(); showToast('Credit added');
   });
 
-  // Update datalist
-  const dl = document.getElementById('memberList');
-  dl.innerHTML = getMembers()
-    .map(m => `<option value="${m.name} (${m.phone})"></option>`)
-    .join('');
-}
-renderMembers();
+  // delete
+  tbody.querySelectorAll('button[data-action="delete"]').forEach(b=>b.onclick=async()=>{
+    const id=Number(b.dataset.id); const ms=getMembers(); const m=ms.find(x=>x.id===id); if(!m) return;
+    if(!confirm(`Delete ${m.name}?`)) return;
+    setMembers(ms.filter(x=>x.id!==id)); renderMembers(); showToast('Member deleted');
+    await queueEvent({ type:'member_delete', payload:{ memberId:id, memberName:m.name }});
+  });
 
-// ---------- APPLY PAYMENT ----------
-document.getElementById('addCredit').addEventListener('click', async () => {
-  const memberInput = document.getElementById('payMember').value.trim();
-  const pack = document.getElementById('payPack').value;
-  const members = getMembers();
-  const m = members.find(x => memberInput.includes(x.name));
-  if (!m) return alert('Select a valid member');
-
-  let addCredits = 0, amount = 0;
-  if (pack === 'single') { addCredits = 1; amount = 20; }
-  else if (pack === '10') { addCredits = 10; amount = 180; }
-  else if (pack === '20') { addCredits = 20; amount = 360; }
-
-  m.credits += addCredits;
-  setMembers(members);
-  renderMembers();
-
-  const tx = { member: m.name, credits: addCredits, amount, date: new Date().toISOString() };
-  await queueEvent({ type: 'payment', payload: { tx } });
-  showToast(`Added ${addCredits} credits to ${m.name}`);
-});
-
-// ---------- CONFIRM CHECK-IN ----------
-document.getElementById('confirmCheckin').addEventListener('click', async () => {
-  const memberInput = document.getElementById('checkinMember').value.trim();
-  const session = document.getElementById('selectedSession').value.trim();
-  if (!session) return alert('Select session');
-  const members = getMembers();
-  const m = members.find(x => memberInput.includes(x.name));
-  if (!m) return alert('Select a valid member');
-  if (m.credits <= 0) return alert('No credits left');
-
-  m.credits -= 1;
-  setMembers(members);
-  renderMembers();
-
-  const att = { member: m.name, session, date: new Date().toISOString() };
-  await queueEvent({ type: 'attendance', payload: { att } });
-  showToast(`${m.name} checked in`);
-});
-
-// ---------- TOAST ----------
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.style.display = 'block';
-  setTimeout(() => (t.style.display = 'none'), 2000);
+  // datalist
+  const dl=$('#memberList'); dl.innerHTML='';
+  members.forEach(m=>{ const o=document.createElement('option'); o.value=`${m.name} (${m.phone||''})`; dl.appendChild(o); });
 }
 
-// ---------- AUTO-FLUSH ----------
-window.addEventListener('online', flushQueue);
-flushQueue();
+// ---------- Payments ----------
+function getPayments(){ return read(LS.payments); }
+function setPayments(v){ write(LS.payments,v); }
+
+$('#addCredit').addEventListener('click', async ()=>{
+  const input=$('#payMember').value.trim();
+  const pack=$('#payPack').value;
+  const members=getMembers();
+  const m=members.find(x=>input.includes(x.name));
+  if(!m) return alert('Select a valid member');
+
+  const p=PRICING[pack];
+  m.credits=(m.credits||0)+p.credits; setMembers(members); renderMembers();
+
+  // Local record (for UI + weekly reports)
+  const rec = {
+    date: new Date().toISOString(),
+    type: pack,                       // 'single' | '10' | '20'
+    memberId: m.id,
+    memberName: m.name,
+    amount: p.amount,
+    credits: p.credits,
+    memberEmail: m.email || ''
+  };
+  const txs=getPayments(); txs.unshift(rec); setPayments(txs); // newest first
+
+  // Send a **flat** payload that matches the sheet headers
+  await queueEvent({ type:'payment', payload: rec });
+
+  $('#payMember').value=''; showToast('Payment applied');
+  refreshPayments();
+  refreshReports();
+});
+
+function refreshPayments(){
+  const tb=$('#txTable tbody'); if(!tb) return;
+  tb.innerHTML='';
+  const txs=getPayments();
+  txs.forEach(t=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML = `
+      <td>${new Date(t.date).toLocaleString()}</td>
+      <td>${PRICING[t.type]?.label || t.type}</td>
+      <td>${t.memberName}</td>
+      <td>$${t.amount}</td>
+      <td>${t.credits}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+// ---------- Attendance / Check-in ----------
+function getAttendance(){ return read(LS.attendance); }
+function setAttendance(v){ write(LS.attendance,v); }
+
+$('#confirmCheckin').addEventListener('click', async ()=>{
+  if(!selectedSession) return alert('Select a session');
+  const input=$('#checkinMember').value.trim();
+  const members=getMembers(); const m=members.find(x=>input.includes(x.name));
+  if(!m) return alert('Select a valid member');
+
+  // if no credit, offer auto single purchase
+  if((m.credits||0) <= 0){
+    if(confirm(`${m.name} has 0 credits. Add a Single ($20) and check in?`)){
+      m.credits = (m.credits||0) + 1;
+      const rec = {
+        date: new Date().toISOString(),
+        type: 'single',
+        memberId: m.id,
+        memberName: m.name,
+        amount: 20,
+        credits: 1,
+        memberEmail: m.email || ''
+      };
+      const txs=getPayments(); txs.unshift(rec); setPayments(txs);
+      await queueEvent({ type:'payment', payload: rec });
+    }else{
+      return;
+    }
+  }
+
+  m.credits -= 1; setMembers(members); renderMembers();
+
+  const att = { date:new Date().toISOString(), session:selectedSession, memberId:m.id, memberName:m.name };
+  const atts=getAttendance(); atts.unshift(att); setAttendance(atts);
+  await queueEvent({ type:'attendance', payload: att });
+
+  $('#checkinMember').value=''; showToast('Checked in');
+  refreshReports();
+});
+
+// ---------- Reports (today + simple weekly) ----------
+function startOfWeek(d){const x=new Date(d); const day=(x.getDay()+6)%7; x.setHours(0,0,0,0); x.setDate(x.getDate()-day); return x;}
+function inSameWeek(a,b){return startOfWeek(a).getTime()===startOfWeek(b).getTime();}
+
+function refreshReports(){
+  const atts=getAttendance();
+  const today=new Date().toDateString();
+  const tToday=atts.filter(a=>new Date(a.date).toDateString()===today);
+  $('#todaySummary').textContent = tToday.length ? `${tToday.length} check-ins today.` : 'No check-ins today.';
+
+  const now=new Date();
+  const txs=getPayments();
+  const weekTxs=txs.filter(t=>inSameWeek(new Date(t.date), now));
+  const weekAtts=atts.filter(a=>inSameWeek(new Date(a.date), now));
+  const revenue=weekTxs.reduce((s,t)=>s+(t.amount||0),0);
+  const sold=weekTxs.reduce((s,t)=>s+(t.credits||0),0);
+  $('#weeklySummary') && ($('#weeklySummary').textContent = `Revenue: $${revenue} • Credits sold: ${sold} • Check-ins: ${weekAtts.length}`);
+}
+
+// ---------- Init ----------
+function init(){
+  renderSessions();
+  renderMembers();
+  refreshPayments();
+  refreshReports();
+  flushQueue();
+}
+init();
