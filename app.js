@@ -1,4 +1,4 @@
-// app.js — Boxing for Fitness PWA (Sheets sync + no-cors + payments table)
+// app.js — Boxing for Fitness PWA (Sheets sync + no-cors + payments table + timetable columns)
 
 // ---------- Config ----------
 const PRICING = {
@@ -70,24 +70,46 @@ $$('nav button[data-tab]').forEach(btn=>{
   });
 });
 
-// ---------- Sessions (vertical by day) ----------
-const sessionGrid = $('#sessionGrid');
+// ---------- Sessions (vertical by day + hover/active) ----------
+const sessionGrid = document.getElementById('sessionGrid');
 let selectedSession = '';
-function renderSessions(){
-  sessionGrid.innerHTML='';
-  TIMETABLE.forEach(col=>{
-    const box=document.createElement('div');
-    box.className='day-col';
-    box.innerHTML=`<h4>${col.day}</h4>`;
-    col.times.forEach(t=>{
-      const slot=document.createElement('div');
-      slot.className='slot';
-      slot.innerHTML=`<div class="time">${t}</div>`;
-      slot.onclick=()=>{ selectedSession=`${col.day} ${t}`; $('#selectedSession').value=selectedSession; };
-      box.appendChild(slot);
+let selectedSlotEl = null;
+
+function renderSessions() {
+  sessionGrid.innerHTML = '';
+
+  TIMETABLE.forEach(col => {
+    const wrap = document.createElement('div');
+    wrap.className = 'day-col';
+    wrap.innerHTML = `<h4>${col.day}</h4>`;
+
+    col.times.forEach(t => {
+      const slot = document.createElement('div');
+      slot.className = 'slot';
+      slot.setAttribute('role', 'button');
+      slot.setAttribute('tabindex', '0');
+      slot.innerHTML = `<div class="time">${t}</div>`;
+
+      const activate = () => {
+        if (selectedSlotEl) selectedSlotEl.classList.remove('active');
+        slot.classList.add('active');
+        selectedSlotEl = slot;
+        selectedSession = `${col.day} ${t}`;
+        document.getElementById('selectedSession').value = selectedSession;
+      };
+
+      slot.onclick = activate;
+      slot.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); } };
+
+      wrap.appendChild(slot);
     });
-    sessionGrid.appendChild(box);
+
+    sessionGrid.appendChild(wrap);
   });
+
+  // Optional: preselect the first session
+  const first = sessionGrid.querySelector('.slot');
+  if (first) first.click();
 }
 
 // ---------- Members ----------
@@ -113,7 +135,8 @@ $('#addMember').addEventListener('click', async ()=>{
 });
 
 function renderMembers(){
-  const tbody=$('#memberTable tbody'); tbody.innerHTML='';
+  const tbody=$('#memberTable tbody'); if(!tbody) return;
+  tbody.innerHTML='';
   const members=getMembers().sort((a,b)=>a.name.localeCompare(b.name));
   members.forEach(m=>{
     const tr=document.createElement('tr');
@@ -143,8 +166,7 @@ function renderMembers(){
   });
 
   // datalist
-  const dl=$('#memberList'); dl.innerHTML='';
-  members.forEach(m=>{ const o=document.createElement('option'); o.value=`${m.name} (${m.phone||''})`; dl.appendChild(o); });
+  const dl=$('#memberList'); if(dl){ dl.innerHTML=''; members.forEach(m=>{ const o=document.createElement('option'); o.value=`${m.name} (${m.phone||''})`; dl.appendChild(o); }); }
 }
 
 // ---------- Payments ----------
@@ -161,19 +183,19 @@ $('#addCredit').addEventListener('click', async ()=>{
   const p=PRICING[pack];
   m.credits=(m.credits||0)+p.credits; setMembers(members); renderMembers();
 
-  // Local record (for UI + weekly reports)
+  // Local record (complete/flat payload)
   const rec = {
     date: new Date().toISOString(),
-    type: pack,                       // 'single' | '10' | '20'
+    type: pack,
     memberId: m.id,
     memberName: m.name,
     amount: p.amount,
     credits: p.credits,
     memberEmail: m.email || ''
   };
-  const txs=getPayments(); txs.unshift(rec); setPayments(txs); // newest first
+  const txs=getPayments(); txs.unshift(rec); setPayments(txs);
 
-  // Send a **flat** payload that matches the sheet headers
+  // Send to Sheets
   await queueEvent({ type:'payment', payload: rec });
 
   $('#payMember').value=''; showToast('Payment applied');
@@ -242,19 +264,30 @@ function startOfWeek(d){const x=new Date(d); const day=(x.getDay()+6)%7; x.setHo
 function inSameWeek(a,b){return startOfWeek(a).getTime()===startOfWeek(b).getTime();}
 
 function refreshReports(){
+  // Today
   const atts=getAttendance();
   const today=new Date().toDateString();
   const tToday=atts.filter(a=>new Date(a.date).toDateString()===today);
-  $('#todaySummary').textContent = tToday.length ? `${tToday.length} check-ins today.` : 'No check-ins today.';
+  $('#todaySummary') && ($('#todaySummary').textContent = tToday.length ? `${tToday.length} check-ins today.` : 'No check-ins today.');
 
-  const now=new Date();
-  const txs=getPayments();
+  // Week
+  const txs=getPayments(); const now=new Date();
   const weekTxs=txs.filter(t=>inSameWeek(new Date(t.date), now));
   const weekAtts=atts.filter(a=>inSameWeek(new Date(a.date), now));
   const revenue=weekTxs.reduce((s,t)=>s+(t.amount||0),0);
   const sold=weekTxs.reduce((s,t)=>s+(t.credits||0),0);
   $('#weeklySummary') && ($('#weeklySummary').textContent = `Revenue: $${revenue} • Credits sold: ${sold} • Check-ins: ${weekAtts.length}`);
 }
+
+// ---------- CSV Exports ----------
+function toCSV(rows){return rows.map(r=>r.map(x=>'"'+String(x).replaceAll('"','""')+'"').join(',')).join('\n');}
+function download(n,t){const b=new Blob([t],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;a.click();URL.revokeObjectURL(a.href);}
+$('#exportAttendance')?.addEventListener('click',()=>{
+  const a=getAttendance(); const rows=[['date','session','memberId','memberName']]; a.forEach(x=>rows.push([x.date,x.session,x.memberId,x.memberName])); download('attendance.csv',toCSV(rows));
+});
+$('#exportPayments')?.addEventListener('click',()=>{
+  const a=getPayments(); const rows=[['date','type','memberId','memberName','amount','credits']]; a.forEach(x=>rows.push([x.date,x.type,x.memberId,x.memberName,x.amount,x.credits])); download('payments.csv',toCSV(rows));
+});
 
 // ---------- Init ----------
 function init(){
