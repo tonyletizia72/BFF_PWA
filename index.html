@@ -1,217 +1,227 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="Robbie Gym">
-  <link rel="apple-touch-icon" href="assets/icon-192.png">
-  <link rel="manifest" href="manifest.json">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Boxing for Fitness</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="./assets/icon-192.png">
   <style>
-    :root {
-      --pad: clamp(10px, 2vmin, 18px);
-      --radius: 16px;
-      --shadow: 0 10px 30px rgba(0,0,0,.08);
-      --bg: #0b0b0d;
-      --card: #121316;
-      --text: #f9fafb;
-      --muted: #a3a3a3;
-      --accent: #ef4444;
-      --line: #2a2b31;
+    body {
+      background-color: #0e0e0e;
+      color: #fff;
+      font-family: "Inter", sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 0;
     }
-    * { box-sizing: border-box; }
-    html, body {height:100%; margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;}
-    body {background: var(--bg); color: var(--text); -webkit-tap-highlight-color: transparent;}
-    .wrap {max-width: 1100px; margin: 0 auto; padding: calc(var(--pad) * 2) var(--pad);}
-    header {display:flex; flex-wrap:wrap; gap:10px; justify-content:space-between; align-items:center; margin-bottom: calc(var(--pad) * 1.5);}
-    h1 {font-size: clamp(22px, 4.2vw, 34px); margin:0;}
-    .muted {color: var(--muted); font-size: .95rem;}
-    nav {display:flex; gap:8px; flex-wrap: wrap;}
-    nav button {border:1px solid var(--line); background: #15161a; color: var(--text); border-radius: 999px; padding: 10px 14px; cursor:pointer;}
-    nav button.active {background: var(--accent); border-color: var(--accent); color: white;}
 
-    .card {background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: calc(var(--pad) * 1.2); border: 1px solid var(--line);}
-    .grid {display:grid; gap: var(--pad);}
-    .row {display:flex; gap: var(--pad); flex-wrap: wrap; align-items: center;}
-    input, select, textarea {width:100%; background:#0e0f12; color: var(--text); border:1px solid var(--line); border-radius:12px; padding:12px 12px; outline:none;}
-    label {font-size:.9rem; color: var(--muted);}
-    .btn {border:0; border-radius: 12px; padding: 12px 16px; font-size: 1rem; cursor:pointer; background: var(--accent); color:white; box-shadow: var(--shadow);}
-    .btn.secondary {background:#23252b; color: var(--text);}
-    .btn.ghost {background:transparent; border:1px solid var(--line);}
-    .btn.sm {padding:8px 12px; font-size:.95rem;}
-    table {width:100%; border-collapse: collapse; font-size:.98rem;}
-    th, td {padding: 10px 8px; border-bottom:1px solid var(--line); text-align:left;}
-    th {color: var(--muted); font-weight: 600;}
-    .chip {display:inline-block; padding: 6px 10px; border-radius:999px; border:1px solid var(--line); background:#14151a;}
-    .section-title {margin: 8px 0 14px 0;}
-    .hint {font-size:.9rem; color: var(--muted);}
-    .toast {position: fixed; left: 50%; transform: translateX(-50%); bottom: 18px; background: #111827; color: white; padding: 10px 14px; border-radius: 999px; display:none;}
+    header {
+      margin: 20px 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+    }
 
-    /* timetable columns (Mon→Sat) */
-    .day-columns { display: grid; gap: 14px; grid-template-columns: repeat(6, 1fr); align-items: start; }
-    @media (max-width: 900px) { .day-columns { grid-template-columns: repeat(2, 1fr); } }
-    .day-col { background:#111217; border:1px solid var(--line); border-radius:12px; padding:12px; }
-    .day-col h4 { margin:0 0 10px 0; color:#e5e7eb; }
-    .session { border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:#0f1014; cursor:pointer; user-select:none; margin-bottom:8px; text-align:center; transition: transform .06s ease, outline-color .12s ease, background .12s ease, border-color .12s ease; }
-    .session:hover { outline:2px solid #2a2b31; transform: translateY(-1px); }
-    .session.active { outline:2px solid var(--accent); border-color: var(--accent); background: linear-gradient(180deg, #16171d 0%, #111217 100%); box-shadow: 0 6px 18px rgba(239,68,68,.2); }
+    h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+    }
+
+    nav {
+      margin-top: 10px;
+    }
+
+    nav button {
+      background: #1a1a1a;
+      border: none;
+      color: #ddd;
+      padding: 8px 14px;
+      margin: 3px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+
+    nav button.active {
+      background: #e74c3c;
+      color: #fff;
+    }
+
+    nav button:hover {
+      background: #c0392b;
+      color: #fff;
+    }
+
+    .card {
+      background-color: #151515;
+      border: 1px solid #2e2e2e;
+      border-radius: 12px;
+      padding: 25px;
+      margin: 40px auto;
+      width: 90%;
+      max-width: 900px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
+    }
+
+    h2 {
+      text-align: left;
+      margin-bottom: 20px;
+      color: #f5f5f5;
+    }
+
+    .session-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 20px;
+    }
+
+    .day-column {
+      background: #1b1b1b;
+      border-radius: 10px;
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transition: background 0.3s;
+    }
+
+    .day-column h3 {
+      margin-bottom: 10px;
+      font-size: 1rem;
+      color: #fff;
+    }
+
+    .session-time {
+      padding: 8px 12px;
+      background: #222;
+      border-radius: 6px;
+      margin: 5px 0;
+      width: 100%;
+      cursor: pointer;
+      transition: all 0.25s ease;
+    }
+
+    .session-time:hover {
+      background: #e74c3c;
+      color: #fff;
+      transform: scale(1.05);
+    }
+
+    .session-time.selected {
+      background: #c0392b;
+      color: #fff;
+    }
+
+    .footer {
+      margin-top: 20px;
+      font-size: 0.85rem;
+      color: #aaa;
+    }
+
+    .input-group {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-top: 15px;
+      gap: 10px;
+    }
+
+    input, button {
+      font-size: 0.95rem;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: none;
+    }
+
+    input {
+      width: 250px;
+      background: #222;
+      color: #fff;
+    }
+
+    .confirm-btn {
+      background-color: #e74c3c;
+      color: #fff;
+      cursor: pointer;
+    }
+
+    .confirm-btn:hover {
+      background-color: #c0392b;
+    }
   </style>
 </head>
+
 <body>
-  <div class="wrap">
-    <header>
-      <div class="row" style="align-items:center; gap:12px;">
-        <img src="assets/bff-logo.png" alt="Boxing for Fitness" style="height:48px; width:auto;"/>
-        <h1>Boxing for Fitness</h1>
-      </div>
-      <nav>
-        <button class="active" data-tab="checkin">Check-in</button>
-        <button data-tab="members">Members</button>
-        <button data-tab="payments">Payments</button>
-        <button data-tab="reports">Reports</button>
-        <button id="installBtn" class="ghost">Install</button>
-      </nav>
-    </header>
+  <header>
+    <img src="./assets/icon-192.png" alt="BFF Logo" width="40" height="40">
+    <h1>Boxing for Fitness</h1>
+  </header>
 
-    <!-- CHECK-IN -->
-    <section id="tab-checkin" class="card">
-      <h3 class="section-title">Sessions</h3>
-      <div id="sessionGrid" class="day-columns">
-        <!-- Columns are static; JS will handle click/active -->
-        <div class="day-col"><h4>Monday</h4>
-          <div class="session" data-day="Monday" data-time="6:00 AM">6:00 AM</div>
-          <div class="session" data-day="Monday" data-time="9:30 AM">9:30 AM</div>
-          <div class="session" data-day="Monday" data-time="5:00 PM">5:00 PM</div>
-          <div class="session" data-day="Monday" data-time="6:30 PM">6:30 PM</div>
-        </div>
-        <div class="day-col"><h4>Tuesday</h4>
-          <div class="session" data-day="Tuesday" data-time="6:00 AM">6:00 AM</div>
-          <div class="session" data-day="Tuesday" data-time="9:30 AM">9:30 AM</div>
-          <div class="session" data-day="Tuesday" data-time="5:00 PM">5:00 PM</div>
-          <div class="session" data-day="Tuesday" data-time="6:30 PM">6:30 PM</div>
-        </div>
-        <div class="day-col"><h4>Wednesday</h4>
-          <div class="session" data-day="Wednesday" data-time="6:00 AM">6:00 AM</div>
-          <div class="session" data-day="Wednesday" data-time="9:30 AM">9:30 AM</div>
-          <div class="session" data-day="Wednesday" data-time="5:00 PM">5:00 PM</div>
-          <div class="session" data-day="Wednesday" data-time="6:30 PM">6:30 PM</div>
-        </div>
-        <div class="day-col"><h4>Thursday</h4>
-          <div class="session" data-day="Thursday" data-time="6:00 AM">6:00 AM</div>
-          <div class="session" data-day="Thursday" data-time="9:30 AM">9:30 AM</div>
-          <div class="session" data-day="Thursday" data-time="5:00 PM">5:00 PM</div>
-          <div class="session" data-day="Thursday" data-time="6:30 PM">6:30 PM</div>
-        </div>
-        <div class="day-col"><h4>Friday</h4>
-          <div class="session" data-day="Friday" data-time="6:00 AM">6:00 AM</div>
-          <div class="session" data-day="Friday" data-time="9:30 AM">9:30 AM</div>
-        </div>
-        <div class="day-col"><h4>Saturday</h4>
-          <div class="session" data-day="Saturday" data-time="8:00 AM">8:00 AM</div>
-          <div class="session" data-day="Saturday" data-time="9:30 AM">9:30 AM</div>
-        </div>
-      </div>
+  <nav>
+    <button id="checkin" class="active">Check-in</button>
+    <button id="members">Members</button>
+    <button id="payments">Payments</button>
+    <button id="reports">Reports</button>
+    <button id="install">Install</button>
+  </nav>
 
-      <div class="row" style="margin-top:14px;">
-        <div style="flex:2;">
-          <label>Member</label>
-          <input list="memberList" id="checkinMember" placeholder="Search name or phone">
-          <datalist id="memberList"></datalist>
-        </div>
-        <div style="flex:1;">
-          <label>Selected Session</label>
-          <input id="selectedSession" readonly>
-        </div>
-        <div style="align-self:end;">
-          <button id="confirmCheckin" class="btn">Confirm Check-in</button>
-        </div>
+  <div class="card">
+    <h2>Sessions</h2>
+    <div class="session-grid">
+      <div class="day-column">
+        <h3>Monday</h3>
+        <div class="session-time">6:00 AM</div>
+        <div class="session-time">9:30 AM</div>
+        <div class="session-time">5:00 PM</div>
+        <div class="session-time">6:30 PM</div>
       </div>
-      <div class="hint">Credit automatically deducted (1 per class). If balance is 0, you’ll be prompted to add a pack or single.</div>
-    </section>
+      <div class="day-column">
+        <h3>Tuesday</h3>
+        <div class="session-time">6:00 AM</div>
+        <div class="session-time">9:30 AM</div>
+        <div class="session-time">5:00 PM</div>
+        <div class="session-time">6:30 PM</div>
+      </div>
+      <div class="day-column">
+        <h3>Wednesday</h3>
+        <div class="session-time">6:00 AM</div>
+        <div class="session-time">9:30 AM</div>
+        <div class="session-time">5:00 PM</div>
+        <div class="session-time">6:30 PM</div>
+      </div>
+      <div class="day-column">
+        <h3>Thursday</h3>
+        <div class="session-time">6:00 AM</div>
+        <div class="session-time">9:30 AM</div>
+        <div class="session-time">5:00 PM</div>
+        <div class="session-time">6:30 PM</div>
+      </div>
+      <div class="day-column">
+        <h3>Friday</h3>
+        <div class="session-time">6:00 AM</div>
+        <div class="session-time">9:30 AM</div>
+      </div>
+      <div class="day-column">
+        <h3>Saturday</h3>
+        <div class="session-time">8:00 AM</div>
+        <div class="session-time">9:30 AM</div>
+      </div>
+    </div>
 
-    <!-- MEMBERS -->
-    <section id="tab-members" class="card" style="display:none;">
-      <div class="grid" style="grid-template-columns: 1fr 2fr;">
-        <div>
-          <h3 class="section-title">Add Member</h3>
-          <div class="grid">
-            <div><label>Full name</label><input id="mName" placeholder="e.g., Alex Smith"></div>
-            <div><label>Phone</label><input id="mPhone" placeholder="e.g., 0400 000 000"></div>
-            <div><label>Email</label><input id="mEmail" type="email" placeholder="e.g., alex@email.com"></div>
-            <div><label>Notes</label><textarea id="mNotes" placeholder="Injuries, level, etc."></textarea></div>
-            <button id="addMember" class="btn">Add (+1 free credit)</button>
-            <div class="hint">New members start with 1 free credit.</div>
-          </div>
-        </div>
+    <div class="input-group">
+      <input type="text" id="memberInput" placeholder="Search name or phone">
+      <input type="text" id="selectedSession" placeholder="Selected Session" readonly>
+      <button class="confirm-btn">Confirm Check-in</button>
+    </div>
 
-        <div>
-          <h3 class="section-title">Member List</h3>
-          <table id="memberTable">
-            <thead><tr>
-              <th>Name</th><th>Phone</th><th>Email</th><th>Credits</th><th></th><th></th>
-            </tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <!-- PAYMENTS -->
-    <section id="tab-payments" class="card" style="display:none;">
-      <div class="row">
-        <div style="flex:2;">
-          <label>Member</label>
-          <input list="memberList" id="payMember" placeholder="Search name or phone">
-        </div>
-        <div style="flex:1;">
-          <label>Pack</label>
-          <select id="payPack">
-            <option value="single">Single $20 (1 credit)</option>
-            <option value="10">10-Pack $180</option>
-            <option value="20">20-Pack $360</option>
-          </select>
-        </div>
-        <div style="align-self:end;">
-          <button id="addCredit" class="btn">Apply Payment</button>
-        </div>
-      </div>
-      <h3 class="section-title">Recent Transactions</h3>
-      <table id="txTable">
-        <thead><tr><th>Date</th><th>Type</th><th>Member</th><th>Amount</th><th>Credits</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </section>
-
-    <!-- REPORTS -->
-    <section id="tab-reports" class="card" style="display:none;">
-      <div class="row">
-        <button id="exportAttendance" class="btn secondary">Export Attendance CSV</button>
-        <button id="exportPayments" class="btn secondary">Export Payments CSV</button>
-      </div>
-      <div style="margin-top:16px;">
-        <h3 class="section-title">Today at a glance</h3>
-        <div id="todaySummary" class="muted">No data yet.</div>
-      </div>
-      <div style="margin-top:16px;">
-        <h3 class="section-title">Latest Check-ins</h3>
-        <table id="attTable">
-          <thead><tr><th>Date</th><th>Session</th><th>Member</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
+    <div class="footer">
+      Credit automatically deducted (1 per class). If balance is 0, you'll be prompted to add a pack or single.
+    </div>
   </div>
 
-  <div id="toast" class="toast">Saved</div>
-
   <script src="app.js"></script>
-  <script>
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-    const isIOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
-    const installBtn = document.getElementById('installBtn');
-    if (!isStandalone && isIOS) installBtn.textContent = 'Add to Home Screen (Share → Add)';
-  </script>
 </body>
 </html>
