@@ -72,6 +72,7 @@ function wireSessions(){
       selectedSession = `${box.dataset.day} ${box.dataset.time}`;
       const sel = $('#selectedSession'); if (sel) sel.value = selectedSession;
     });
+    // keyboard support
     box.addEventListener('keydown', (e)=>{
       if(e.key==='Enter' || e.key===' '){ e.preventDefault(); box.click(); }
     });
@@ -190,6 +191,11 @@ function refreshPayments(){
     tb.appendChild(tr);
   });
 }
+
+$('#clearPayments')?.addEventListener('click', ()=>{
+  if(!confirm('Clear recent transactions on this device? This does NOT affect the Google Sheet.')) return;
+  setPayments([]); refreshPayments(); showToast('Local transactions cleared');
+});
 
 // Attendance / check-in
 function getAttendance(){ return read(LS.attendance); }
