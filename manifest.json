@@ -1,0 +1,21 @@
+{
+  "name": "Boxing for Fitness",
+  "short_name": "BFF Gym",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0b0b0d",
+  "theme_color": "#ef4444",
+  "description": "Offline-first check-in & credits tracker for Boxing for Fitness.",
+  "icons": [
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
