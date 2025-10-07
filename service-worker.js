@@ -1,5 +1,5 @@
 // service-worker.js — cache bump to refresh files
-const CACHE_NAME = 'bff-gym-cache-v8'; // bump this when you change files
+const CACHE_NAME = 'bff-gym-cache-v9'; // bump this when you change files
 const ASSETS = [
   './',
   './index.html',
