@@ -1,5 +1,5 @@
 // Boxing for Fitness — Service Worker with offline + instant update
-const CACHE_NAME = 'bff-gym-cache-v2';
+const CACHE_NAME = 'bff-gym-cache-v3';
 const ASSETS = [
   './',
   './index.html',
