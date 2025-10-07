@@ -63,7 +63,6 @@
       text-align:center;
       transition: transform .12s ease, background .12s ease, border-color .12s ease, color .12s ease, box-shadow .12s ease;
     }
-    /* Strong, obvious hover */
     .session:hover {
       background: var(--accent);
       color: #fff;
@@ -71,7 +70,6 @@
       transform: translateY(-2px);
       box-shadow: 0 8px 22px rgba(239,68,68,.25);
     }
-    /* Selected state */
     .session.active {
       background: linear-gradient(180deg, #16171d 0%, #111217 100%);
       border-color: var(--accent);
@@ -229,6 +227,9 @@
   </div>
 
   <div id="toast" class="toast">Saved</div>
+
+  <!-- Load settings BEFORE app.js -->
+  <script src="settings.js"></script>
   <script src="app.js"></script>
   <script>
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
